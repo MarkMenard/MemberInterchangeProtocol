@@ -2,35 +2,35 @@
 
 Repository for information related to the Member Interchange Protocol used to share information about members between independent systems on a vendor neutral basis.
 
-## Purpose
+# Purpose
 
-Provide a protocol for Member based organizations to exchange member status information between organizations (The Member Interchange Protocol (MIP)) for the Conference of Grand Secretaries of North America (CGSNA). MIP allows for point-to-point sharing of member data between discrete organizations, discovery of organizations using the protocol, and a built-in trust system to speed the exchange of credentials between systems. 
+Provide a protocol for Member based organizations to exchange member information between organizations and their database systems. MIP allows for point-to-point sharing of member data between discrete organizations, discovery of organizations using the protocol, and a built-in trust system to speed the exchange of credentials between systems. The protocol only defines how system can communicate information. How those systems use that information further is not covered by the protocol. Separating the techinical requirements from policy. MIP defines how organizations can share information not what they can do with it. The what is left to the organizations themselves to figure out.
 
 MIP provides the following non-exhaustive benefits:
 
 - No need to share your member data in any way with a third-party system,
-- No need for the CGSNA to implement, host, and maintain a system running a central clearing house,
+- No need for any groups of organizations to implement, host, and maintain a central system running a clearing house,
 - No data synchronization issues,
-- No long-term software maintenance cost to the CGSNA,
+- No long-term software maintenance cost to the any group of organizations,
 - No server security risks with a central clearing house system, and 
 - Ability to provide for linked member records between systems in the future without the need to maintain persistent member data in a third-party system.
 
 MIP allows for each organization to control how their data is disseminated, which parent organizations they share data with, and how their data and identity is propagated.
 
-## Definitions
+# Inspiration 
 
-Local Group: A local group that is chartered by a Parent Group and is the unit that a party belongs to as a member.
+MIP was conceived to address the needs of the organizations in the Conference of Grand Secretaries in North America (https://www.cogsna.org/about) to share information on persons who hold membership in multiple organizations within their eco-system.
 
-Parent Group: An organization that charters local groups. Within the Masonic context these are Grand Lodges, Grand Chapters, etc.
+# Definitions
 
-Party: A record in a member system representing a person or entity that is a member or is in the process of becoming a member.
+- Local Group: A local group that is chartered by a Parent Group and is the unit that a party belongs to as a member.
+- Parent Group: An organization that charters local groups. Within the Masonic context these are Grand Lodges, Grand Chapters, etc.
+- Party: A record in a member system representing a person or entity that is a member or is in the process of becoming a member.
+- Node: A system that supports MIP.
+- Node Eco-System: A group of nodes that agree to share node information among themselves and potentially have trusted nodes that can “vouch” for other nodes so third parties can quickly establish connections.
+- Trusted Node: A node that is trusted by a system to authenticate the validity of a third-party node in a MIP Node Eco-System.
 
-Node: A system that supports MIP.
-
-Node Eco-System: A group of nodes that agree to share node information among themselves and potentially have trusted nodes that can “vouch” for other nodes so third parties can quickly establish connections.
-
-Trusted Node: A node that is trusted by a system to authenticate the validity of a third-party node in a MIP Node Eco-System.
-Protocol Overview
+# Protocol Overview
 
 Each node that implements MIP has the ability to exchange credentials with other systems that support MIP to establish identity and exchange cryptographic keys for further transactions.
 
@@ -46,7 +46,7 @@ The protocol also supports automatic notification for when a node creates a new 
 
 All requests will use RSA signed JSON payloads for authentication with a time component to protect against replay attacks.
 
-## Why MIP?
+# Why MIP?
 
 MIP provides a protocol for exchanging information between member-based organizations on a point-to-point basis. MIP provides a high level of control to the organizations using the protocol and provides a system that has no single point of failure.
 
@@ -61,7 +61,7 @@ MIP 1.0 provides two main sets of functionalities:
 	- request official Certificates of Good Standing, and
 	- retrieve current status.
 
-## System vs Protocol
+# System vs Protocol
 
 Because MIP is a mesh protocol using authenticated point-to-point connections between member systems there is no single point of failure or the need to maintain a central server or clearing house. 
 
@@ -85,9 +85,9 @@ of organizations that adopts a protocol like MIP are:
 
 In short MIP enables the CGSNA to completely side-step getting into the service provision business and get all of the benefits that cross organization member looks ups can deliver.
 
-## MIP 1.0 Functions Overview
+# MIP 1.0 Functions Overview
 
-### Node Protocol
+## Node Protocol
 
 - Node Handshake: Request or establish a connection between two nodes that implement MIP. This is the process that kicks off the process of creating a connection between two organizations.
 - Node Verify Signature: Request a third-party verification from a trusted node of a signature.
@@ -99,14 +99,14 @@ In short MIP enables the CGSNA to completely side-step getting into the service 
 - New Node Notification: Notify my peer nodes that I have created a connection with a new node.
 - Nodes Query: Ask a node for a list of the nodes it has connections with and has permission to share.
 
-### Member Protocol
+## Member Protocol
 
 - Member Query: Search for a member in a connected system using member number; or first name, last name, and birth date. The response to this request should include the member’s type (ie: Master Mason, Fellowcraft, etc.) and the origin system’s representation of the member’s status and an indicator showing if that status is active or inactive.
 - Member Status Check: A quick query to get the current status of a known member, this does not return a full member profile.
 - Certificate of Good Standing (COGS) Request: Request a certificate of good standing from a system. This could be answered automatically or manually depending on the requirements of the receiving organization. If it is automatic the COGS will be returned immediately. If the COGS cannot be returned immediately the response will include an ID to track the request and to later receive the COGS.
 - Certificate of Good Standing Notification: If a COGS cannot be returned immediately when requested the COGS will be returned to the requesting system using this function. 
 
-## MIP 2.0 Potential Functions
+# MIP 2.0 Potential Features
 
 There are many potential functions that could be added to MIP such as:
 
