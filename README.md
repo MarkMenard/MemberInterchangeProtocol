@@ -1,10 +1,10 @@
-# MemberInterchangeProtocol
-Repository for information related to the Member Interchange Protocol used to share information about members between independent systems on a vendor neutral basis.
+# Member Interchange Protocol
 
+Repository for information related to the Member Interchange Protocol used to share information about members between independent systems on a vendor neutral basis.
 
 ## Purpose
 
-Provide a protocol for Masonic organizations to exchange member status information between organizations (The Member Interchange Protocol (MIP)) for the Conference of Grand Secretaries of North America (CGSNA). MIP allows for point-to-point sharing of member data between discrete organizations, discovery of organizations using the protocol, and a built-in trust system to speed the exchange of credentials between systems. 
+Provide a protocol for Member based organizations to exchange member status information between organizations (The Member Interchange Protocol (MIP)) for the Conference of Grand Secretaries of North America (CGSNA). MIP allows for point-to-point sharing of member data between discrete organizations, discovery of organizations using the protocol, and a built-in trust system to speed the exchange of credentials between systems. 
 
 MIP provides the following non-exhaustive benefits:
 
