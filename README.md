@@ -19,7 +19,7 @@ MIP allows for each organization to control how their data is disseminated, whic
 
 # Inspiration 
 
-MIP was conceived to address the needs of the organizations in the Conference of Grand Secretaries in North America (https://www.cogsna.org/about) to share information on persons who hold membership in multiple organizations within their eco-system.
+MIP was conceived to address the needs of the organizations in the Conference of Grand Secretaries in North America (https://www.cogsna.org/) to share information on persons who hold membership in multiple organizations within their eco-system.
 
 # Definitions
 
