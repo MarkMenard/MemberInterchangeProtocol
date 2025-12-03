@@ -17,9 +17,13 @@ MIP provides the following non-exhaustive benefits:
 
 MIP allows for each organization to control how their data is disseminated, which parent organizations they share data with, and how their data and identity is propagated.
 
+# Who Should Use MIP
+
+If your organization is part of a confederation of member-based organizations where a person can belong to more than one organization in the confederation and the organizations have a need/want to share information about those shared members MIP can facilitate the sharing of information.
+
 # Inspiration 
 
-MIP was conceived to address the needs of the organizations in the Conference of Grand Secretaries in North America (https://www.cogsna.org/) to share information on persons who hold membership in multiple organizations within their eco-system.
+MIP was conceived to address the needs of the organizations in the Conference of Grand Secretaries in North America (CGSNA) (https://www.cogsna.org/) to share information on persons who hold membership in multiple organizations within their ecosystem, or who are wishing to move their membership from one organization to another. Most of the organizations within the CGSNA run different member management systems, but have the need to share information and member status within the CGSNA ecosystem. MIP provides a protocol that allows the various systems used to manage member to share that information in a vendor independent fashion.
 
 # Definitions
 
@@ -67,12 +71,9 @@ Because MIP is a mesh protocol using authenticated point-to-point connections be
 
 MIP is not a “system” in the sense that there is no single computer that is responsible for administering the exchange of information between organizations. Information is simply passed between one member organization and another with no need for centralized definitions, global IDs, or other data that requires maintenance.
 
-Creating a central clearing house instead of simply adopting a protocol for exchanging member information between Masonic bodies would entail both implementing, hosting, and providing for the long-term maintenance of the system of software and hardware that implements the system. As well, the system would require the development and implementation of a protocol that the participating member databases would need to implement to communicate with the central clearing house system.
+Creating a central clearing house instead of simply adopting a protocol for exchanging member information between organizations would entail both implementing, hosting, and providing for the long-term maintenance of the system of software and hardware that implements the system. As well, the system would require the development and implementation of a protocol that the participating member databases would need to implement to communicate with the central clearing house system.
 
-In simple terms if CGSNA creates a central clearing house it still must develop and adopt a protocol for the interchange of member data. MIP simply allows CGSNA to adopt MIP and be done and let the vendors in the space implement it.
-
-MIP sidesteps all of the concerns of having a system in favor of simply adopting a protocol that provides a quick way to on-board nodes into the system. The benefits to any group 
-of organizations that adopts a protocol like MIP are:
+MIP sidesteps all of the concerns of having a system in favor of simply adopting a protocol that provides a quick way to on-board nodes into the system. The benefits to any group of organizations that adopts a protocol like MIP are:
 
 - No development costs to implement a central system to administer data sharing,
 - No hosting costs for hosting said system,
@@ -83,7 +84,7 @@ of organizations that adopts a protocol like MIP are:
 - No security risks involved in sharing data with a third party system, and
 - The cost of implementing and maintaining MIP falls to the vendors who decide to implement MIP.
 
-In short MIP enables the CGSNA to completely side-step getting into the service provision business and get all of the benefits that cross organization member looks ups can deliver.
+In short MIP enables the any group of organizations to completely side-step getting into the service provision business and get all of the benefits that cross organization member looks ups can deliver.
 
 # MIP 1.0 Functions Overview
 
