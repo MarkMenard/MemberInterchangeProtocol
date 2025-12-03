@@ -23,7 +23,7 @@ If your organization is part of a confederation of member-based organizations wh
 
 # Inspiration 
 
-MIP was conceived to address the needs of the organizations in the Conference of Grand Secretaries in North America (CGSNA) (https://www.cogsna.org/) to share information on persons who hold membership in multiple organizations within their ecosystem, or who are wishing to move their membership from one organization to another. Most of the organizations within the CGSNA run different member management systems, but have the need to share information and member status within the CGSNA ecosystem. MIP provides a protocol that allows the various systems used to manage member to share that information in a vendor independent fashion.
+MIP was conceived to address the needs of the organizations in the Conference of Grand Secretaries in North America (CGSNA) (https://www.cogsna.org/) to share information on persons who hold membership in multiple organizations within their ecosystem, or who are wishing to move their membership from one organization to another. Most of the organizations within the CGSNA run different member management systems, but have the need to share information and member status within the CGSNA ecosystem. MIP provides a protocol that allows the various systems used to manage members to share that information in a vendor independent fashion.
 
 # Definitions
 
