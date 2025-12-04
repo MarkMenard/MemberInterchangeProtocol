@@ -60,11 +60,12 @@ MIP revolves around representing each organization that participates in a data s
 The protocol is also designed to allow organizations that are sharing databases in one member management system to independently manage their permissions and participation in the network independently.
 
 MIP 1.0 provides two main sets of functionalities:
+
 - node functions to connect two organizations and authenticate and add nodes to the network, and
-- member queries to 
+- member search requests to 
 	- search for members across organizations, 
 	- request official Certificates of Good Standing, and
-	- retrieve current status.
+	- retrieve current member status.
 
 # System vs Protocol
 
@@ -103,8 +104,10 @@ In short MIP enables the any group of organizations to completely side-step gett
 
 ## Member Protocol
 
-- Member Query: Search for a member in a connected system using member number; or first name, last name, and birth date. The response to this request should include the member’s type (ie: Master Mason, Fellowcraft, etc.) and the origin system’s representation of the member’s status and an indicator showing if that status is active or inactive.
-- Member Status Check: A quick query to get the current status of a known member, this does not return a full member profile.
+- Member Search Request: Request a search for a member in a connected system using member number; or first name, last name, and birthdate. The response to this request can either be a notice that the search is pending with an ID for followup, or a user of the protocol can choose to automatically responsd with the search results.
+- Member Search Notification: This notification is sent in response to a "Member Search Request" it includes a notification status (SUCCEEDED or DENIED), and the search results on success. The response to this request should include the member’s type (ie: Master Mason, Fellowcraft, Full Member, Associate Member, etc.) and the responding system’s representation of the member’s status and an indicator showing if that status is active or inactive, and if the member is considered in good standing.
+- Member Status Check Request: Request the current status of a known member by member identifier. A system can choose to queue or immediately respond to the request.
+- Member Status Check Notification: This notification is sent in response to a "Member Status Check Request" it includes a notification status (SUCCEEDED or DENIED), and the member status on success. This typically would also include the member's type (see Member Search Notification above).
 - Certificate of Good Standing (COGS) Request: Request a certificate of good standing from a system. This could be answered automatically or manually depending on the requirements of the receiving organization. If it is automatic the COGS will be returned immediately. If the COGS cannot be returned immediately the response will include an ID to track the request and to later receive the COGS.
 - Certificate of Good Standing Notification: If a COGS cannot be returned immediately when requested the COGS will be returned to the requesting system using this function. 
 
