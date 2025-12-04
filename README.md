@@ -33,6 +33,7 @@ MIP was conceived to address the needs of the organizations in the Conference of
 - Node: A system that supports MIP.
 - Node Eco-System: A group of nodes that agree to share node information among themselves and potentially have trusted nodes that can “vouch” for other nodes so third parties can quickly establish connections.
 - Trusted Node: A node that is trusted by a system to authenticate the validity of a third-party node in a MIP Node Eco-System.
+- Good Standing: Any status a member can be in that denotes they are either an active member of an organization or if they are inactive they are eligible to re-join the organization, or another organization that recognizes their current or prior membership.
 
 # Protocol Overview
 
