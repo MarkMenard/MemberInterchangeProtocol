@@ -4,7 +4,13 @@ Repository for information related to the Member Interchange Protocol used to sh
 
 # Purpose
 
-Provide a protocol for Member based organizations to exchange member information between organizations and their database systems. MIP allows for point-to-point sharing of member data between discrete organizations, discovery of organizations using the protocol, and a built-in trust system to speed the exchange of credentials between systems. The protocol only defines how system can communicate information. How those systems use that information further is not covered by the protocol. Separating the techinical requirements from policy. MIP defines how organizations can share information not what they can do with it. The what is left to the organizations themselves to figure out.
+Provide a protocol for Member based organizations to exchange member information between organizations and their database systems. MIP allows for point-to-point sharing of member data between discrete organizations, discovery of organizations using the protocol, and a built-in trust system to speed the exchange of credentials between systems. The protocol only defines how system can communicate information. How those systems use that information further is not covered by the protocol. Separating the technical requirements from policy. MIP defines how organizations can share information not what they can do with it. The what is left to the organizations themselves to figure out.
+
+MIP allows your organization to connect with other member-based organizations you have member relationships with. Using MIP you can:
+
+- Request member searches of organizations you have a connection to,
+- Request a certificate of good standing for an individual from a connected organization,
+- Request current member status of a person in a connected organization, and more.
 
 MIP provides the following non-exhaustive benefits:
 
