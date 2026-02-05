@@ -1,0 +1,20 @@
+#!/bin/bash
+# Stop all MIP demo nodes
+
+echo "Stopping MIP Demo Nodes..."
+
+for i in 1 2 3; do
+    if [ -f /tmp/mip_node$i.pid ]; then
+        PID=$(cat /tmp/mip_node$i.pid)
+        if ps -p $PID > /dev/null 2>&1; then
+            echo "Stopping Node $i (PID: $PID)..."
+            kill $PID 2>/dev/null
+        fi
+        rm -f /tmp/mip_node$i.pid
+    fi
+done
+
+# Also kill any remaining dotnet processes running our app
+pkill -f "MipReference.dll" 2>/dev/null
+
+echo "All nodes stopped."

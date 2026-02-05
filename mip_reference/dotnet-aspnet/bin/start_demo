@@ -1,0 +1,46 @@
+#!/bin/bash
+# Start three MIP nodes for demonstration
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_DIR"
+
+echo "Starting MIP Demo Nodes..."
+echo ""
+
+# Build the project first
+echo "Building project..."
+dotnet build -c Release
+
+# Start three nodes in background
+echo "Starting Node 1 (Grand Lodge of Alpha) on port 4001..."
+CONFIG=config/node1.yaml dotnet run --no-build -c Release --urls "http://localhost:4001" > /tmp/mip_node1.log 2>&1 &
+echo $! > /tmp/mip_node1.pid
+
+sleep 2
+
+echo "Starting Node 2 (Grand Lodge of Beta) on port 4002..."
+CONFIG=config/node2.yaml dotnet run --no-build -c Release --urls "http://localhost:4002" > /tmp/mip_node2.log 2>&1 &
+echo $! > /tmp/mip_node2.pid
+
+sleep 2
+
+echo "Starting Node 3 (Grand Lodge of Gamma) on port 4003..."
+CONFIG=config/node3.yaml dotnet run --no-build -c Release --urls "http://localhost:4003" > /tmp/mip_node3.log 2>&1 &
+echo $! > /tmp/mip_node3.pid
+
+sleep 2
+
+echo ""
+echo "=============================================="
+echo "MIP Demo Nodes Started!"
+echo "=============================================="
+echo ""
+echo "Node 1 (Alpha): http://localhost:4001"
+echo "Node 2 (Beta):  http://localhost:4002"
+echo "Node 3 (Gamma): http://localhost:4003"
+echo ""
+echo "Logs are in /tmp/mip_node*.log"
+echo "Run 'bin/stop_demo' to stop all nodes"
+echo ""

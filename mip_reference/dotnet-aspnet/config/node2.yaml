@@ -1,0 +1,69 @@
+port: 4002
+organization_name: "Grand Lodge of Beta"
+contact_person: "Bob Builder"
+contact_phone: "+1-555-0002"
+share_my_organization: true
+trust_threshold: 1
+
+members:
+  - member_number: "BETA-001"
+    first_name: "James"
+    last_name: "Wilson"
+    birthdate: "1982-05-10"
+    status: "Active"
+    is_active: true
+    good_standing: true
+    years_in_good_standing: 12
+    email: "james.wilson@example.com"
+    phone: "+1-555-2001"
+    address:
+      address1: "789 Beta Boulevard"
+      city: "Beta City"
+      state: "BC"
+      postal_code: "20001"
+      country: "US"
+    affiliations:
+      - local_name: "Cornerstone Lodge No. 3"
+        local_number: "3"
+        local_location: "Beta City, BC"
+        member_type: "Master Mason"
+        local_status: "Active"
+        is_active: true
+        level: "Primary"
+        date: "2013-04-20"
+
+  - member_number: "BETA-002"
+    first_name: "William"
+    last_name: "Taylor"
+    birthdate: "1978-09-25"
+    status: "Active"
+    is_active: true
+    good_standing: true
+    years_in_good_standing: 18
+    email: "william.taylor@example.com"
+    phone: "+1-555-2002"
+    affiliations:
+      - local_name: "Lighthouse Lodge No. 8"
+        local_number: "8"
+        member_type: "Master Mason"
+        local_status: "Active"
+        is_active: true
+        level: "Primary"
+        date: "2007-11-15"
+
+  - member_number: "BETA-003"
+    first_name: "Thomas"
+    last_name: "Anderson"
+    birthdate: "1985-12-01"
+    status: "Active"
+    is_active: true
+    good_standing: true
+    years_in_good_standing: 8
+    email: "thomas.anderson@example.com"
+    phone: "+1-555-2003"
+    affiliations:
+      - local_name: "Cornerstone Lodge No. 3"
+        local_number: "3"
+        member_type: "Master Mason"
+        local_status: "Active"
+        is_active: true

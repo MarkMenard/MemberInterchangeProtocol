@@ -1,0 +1,67 @@
+port: 4003
+organization_name: "Grand Lodge of Gamma"
+contact_person: "Charlie Chapman"
+contact_phone: "+1-555-0003"
+share_my_organization: true
+trust_threshold: 1
+
+members:
+  - member_number: "GAMMA-001"
+    first_name: "Richard"
+    last_name: "Davis"
+    birthdate: "1972-08-14"
+    status: "Active"
+    is_active: true
+    good_standing: true
+    years_in_good_standing: 22
+    email: "richard.davis@example.com"
+    phone: "+1-555-3001"
+    address:
+      address1: "321 Gamma Street"
+      city: "Gamma City"
+      state: "GC"
+      postal_code: "30001"
+      country: "US"
+    affiliations:
+      - local_name: "Phoenix Lodge No. 5"
+        local_number: "5"
+        local_location: "Gamma City, GC"
+        member_type: "Master Mason"
+        local_status: "Active"
+        is_active: true
+        level: "Primary"
+        date: "2003-06-10"
+
+  - member_number: "GAMMA-002"
+    first_name: "Joseph"
+    last_name: "Miller"
+    birthdate: "1980-03-30"
+    status: "Active"
+    is_active: true
+    good_standing: true
+    years_in_good_standing: 14
+    email: "joseph.miller@example.com"
+    phone: "+1-555-3002"
+    affiliations:
+      - local_name: "Phoenix Lodge No. 5"
+        local_number: "5"
+        member_type: "Master Mason"
+        local_status: "Active"
+        is_active: true
+
+  - member_number: "GAMMA-003"
+    first_name: "Charles"
+    last_name: "Moore"
+    birthdate: "1968-11-22"
+    status: "Demitted"
+    is_active: false
+    good_standing: true
+    years_in_good_standing: 30
+    email: "charles.moore@example.com"
+    phone: "+1-555-3003"
+    affiliations:
+      - local_name: "Acacia Lodge No. 11"
+        local_number: "11"
+        member_type: "Master Mason"
+        local_status: "Demitted"
+        is_active: false
