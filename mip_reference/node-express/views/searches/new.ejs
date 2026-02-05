@@ -1,0 +1,59 @@
+<div class="new-search">
+  <h2>New Member Search</h2>
+
+  <% const active = store.activeConnections(); %>
+  <% if (active.length === 0) { %>
+    <p class="warning">You need at least one active connection to perform a search.</p>
+    <a href="/connections" class="btn">Manage Connections</a>
+  <% } else { %>
+    <form action="/searches" method="post">
+      <div class="form-group">
+        <label for="target_mip_id">Search On</label>
+        <select id="target_mip_id" name="target_mip_id" required>
+          <option value="">Select a connected organization...</option>
+          <% active.forEach(conn => { %>
+            <option value="<%= conn.mipIdentifier %>"><%= h(conn.organizationName) %></option>
+          <% }); %>
+        </select>
+      </div>
+
+      <fieldset>
+        <legend>Search by Member Number</legend>
+        <div class="form-group">
+          <label for="member_number">Member Number</label>
+          <input type="text" id="member_number" name="member_number" placeholder="e.g., BETA-001">
+        </div>
+      </fieldset>
+
+      <p class="or">- OR -</p>
+
+      <fieldset>
+        <legend>Search by Name</legend>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="first_name">First Name</label>
+            <input type="text" id="first_name" name="first_name">
+          </div>
+          <div class="form-group">
+            <label for="last_name">Last Name</label>
+            <input type="text" id="last_name" name="last_name">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="birthdate">Birthdate (optional)</label>
+          <input type="date" id="birthdate" name="birthdate">
+        </div>
+      </fieldset>
+
+      <div class="form-group">
+        <label for="notes">Notes (optional)</label>
+        <textarea id="notes" name="notes" rows="3" placeholder="Additional context for this search..."></textarea>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn primary">Submit Search Request</button>
+        <a href="/searches" class="btn">Cancel</a>
+      </div>
+    </form>
+  <% } %>
+</div>

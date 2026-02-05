@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# MIP Reference Implementation - Demo Startup Script
+# Starts 3 MIP nodes on ports 4001, 4002, 4003
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$ROOT_DIR"
+
+# Create tmp directory for PID files
+mkdir -p tmp
+
+# Check if any nodes are already running
+if [ -f tmp/node1.pid ] && kill -0 $(cat tmp/node1.pid) 2>/dev/null; then
+  echo "Node 1 is already running. Run ./bin/stop_demo first."
+  exit 1
+fi
+
+echo "=================================================="
+echo "    MIP Reference Implementation Demo"
+echo "    (Node.js / Express)"
+echo "=================================================="
+echo ""
+echo "Installing dependencies..."
+npm install --silent
+
+echo ""
+echo "Starting MIP nodes..."
+echo ""
+
+# Start Node 1 (Grand Lodge of Alpha)
+CONFIG=config/node1.yml node app.js > tmp/node1.log 2>&1 &
+echo $! > tmp/node1.pid
+sleep 1
+
+# Start Node 2 (Grand Lodge of Beta)
+CONFIG=config/node2.yml node app.js > tmp/node2.log 2>&1 &
+echo $! > tmp/node2.pid
+sleep 1
+
+# Start Node 3 (Grand Lodge of Gamma)
+CONFIG=config/node3.yml node app.js > tmp/node3.log 2>&1 &
+echo $! > tmp/node3.pid
+sleep 1
+
+echo "=================================================="
+echo "    Nodes Started!"
+echo "=================================================="
+echo ""
+echo "  Node 1 (Grand Lodge of Alpha): http://localhost:4001"
+echo "  Node 2 (Grand Lodge of Beta):  http://localhost:4002"
+echo "  Node 3 (Grand Lodge of Gamma): http://localhost:4003"
+echo ""
+echo "Log files are in the tmp/ directory."
+echo ""
+echo "To stop all nodes, run: ./bin/stop_demo"
+echo ""
+echo "=================================================="
+echo "    Demo Scenario"
+echo "=================================================="
+echo ""
+echo "1. Open three browser tabs to the URLs above"
+echo ""
+echo "2. Manual Connection (Node 1 -> Node 2):"
+echo "   - On Node 1, go to Connections"
+echo "   - Copy Node 2's MIP URL from its dashboard"
+echo "   - Paste it in 'Connect to New Node' and submit"
+echo "   - On Node 2, go to Connections and click 'Approve'"
+echo ""
+echo "3. Manual Connection (Node 2 -> Node 3):"
+echo "   - Repeat the process: Node 2 connects to Node 3"
+echo "   - Node 3 approves the connection"
+echo ""
+echo "4. Auto-Approved Connection (Node 1 -> Node 3):"
+echo "   - On Node 1, connect to Node 3"
+echo "   - Since Node 2 trusts both nodes, the connection"
+echo "     should be AUTO-APPROVED via web-of-trust!"
+echo ""
+echo "5. Test Member Search and COGS requests"
+echo ""
+echo "=================================================="

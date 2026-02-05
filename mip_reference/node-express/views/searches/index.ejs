@@ -1,0 +1,116 @@
+<div class="searches">
+  <h2>Member Searches</h2>
+
+  <a href="/searches/new" class="btn primary">New Search</a>
+
+  <% const inboundPending = store.allSearchRequests().filter(s => s.isInbound() && s.isPending()); %>
+  <% if (inboundPending.length > 0) { %>
+    <section class="pending-inbound">
+      <h3>Pending Inbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>Search Criteria</th>
+            <th>Received</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% inboundPending.forEach(search => { %>
+            <tr>
+              <td><%= h(search.targetOrg) %></td>
+              <td><%= h(search.searchDescription()) %></td>
+              <td><%= formatTime(search.createdAt) %></td>
+              <td class="actions">
+                <form action="/searches/<%= search.sharedIdentifier %>/approve" method="post" style="display:inline">
+                  <button type="submit" class="btn small success">Approve</button>
+                </form>
+                <form action="/searches/<%= search.sharedIdentifier %>/decline" method="post" style="display:inline">
+                  <button type="submit" class="btn small danger">Decline</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+
+  <% const outbound = store.allSearchRequests().filter(s => s.isOutbound()); %>
+  <% if (outbound.length > 0) { %>
+    <section class="outbound-searches">
+      <h3>Outbound Searches</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>To</th>
+            <th>Search Criteria</th>
+            <th>Status</th>
+            <th>Results</th>
+            <th>Sent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% outbound.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).forEach(search => { %>
+            <tr>
+              <td><%= h(search.targetOrg) %></td>
+              <td><%= h(search.searchDescription()) %></td>
+              <td><span class="status <%= search.status.toLowerCase() %>"><%= search.status %></span></td>
+              <td>
+                <% if (search.isApproved() && search.matches.length > 0) { %>
+                  <%= search.matches.length %> match(es)
+                  <ul class="match-list">
+                    <% search.matches.forEach(match => { %>
+                      <li>
+                        <strong><%= h(match.first_name) %> <%= h(match.last_name) %></strong>
+                        (#<%= h(match.member_number) %>)
+                        - <%= h(match.group_status && match.group_status.status) %>
+                      </li>
+                    <% }); %>
+                  </ul>
+                <% } else if (search.isApproved()) { %>
+                  No matches
+                <% } else if (search.isDeclined()) { %>
+                  <em><%= h(search.declineReason || 'Declined') %></em>
+                <% } else { %>
+                  -
+                <% } %>
+              </td>
+              <td><%= formatTime(search.createdAt) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+
+  <% const inboundCompleted = store.allSearchRequests().filter(s => s.isInbound() && !s.isPending()); %>
+  <% if (inboundCompleted.length > 0) { %>
+    <section class="inbound-completed">
+      <h3>Completed Inbound Searches</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>Search Criteria</th>
+            <th>Status</th>
+            <th>Matches</th>
+            <th>Received</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% inboundCompleted.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).forEach(search => { %>
+            <tr>
+              <td><%= h(search.targetOrg) %></td>
+              <td><%= h(search.searchDescription()) %></td>
+              <td><span class="status <%= search.status.toLowerCase() %>"><%= search.status %></span></td>
+              <td><%= search.isApproved() ? search.matches.length : '-' %></td>
+              <td><%= formatTime(search.createdAt) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+</div>

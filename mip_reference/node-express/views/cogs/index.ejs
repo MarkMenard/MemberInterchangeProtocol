@@ -1,0 +1,129 @@
+<div class="cogs">
+  <h2>Certificates of Good Standing</h2>
+
+  <a href="/cogs/new" class="btn primary">Request COGS</a>
+
+  <% const inboundPending = store.allCogsRequests().filter(c => c.isInbound() && c.isPending()); %>
+  <% if (inboundPending.length > 0) { %>
+    <section class="pending-inbound">
+      <h3>Pending Inbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>Requested Member</th>
+            <th>Requesting Member</th>
+            <th>Notes</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% inboundPending.forEach(cogs => { %>
+            <tr>
+              <td><%= h(cogs.targetOrg) %></td>
+              <td class="monospace"><%= h(cogs.requestedMemberNumber) %></td>
+              <td>
+                <% const rm = cogs.requestingMember; %>
+                <%= h(rm.first_name) %> <%= h(rm.last_name) %>
+                <% if (rm.member_number) { %>
+                  <br><small>#<%= h(rm.member_number) %></small>
+                <% } %>
+              </td>
+              <td><%= h(cogs.notes) %></td>
+              <td class="actions">
+                <% const member = store.findMember(cogs.requestedMemberNumber); %>
+                <% if (member) { %>
+                  <% if (member.goodStanding) { %>
+                    <form action="/cogs/<%= cogs.sharedIdentifier %>/approve" method="post" style="display:inline">
+                      <button type="submit" class="btn small success">Approve</button>
+                    </form>
+                  <% } else { %>
+                    <form action="/cogs/<%= cogs.sharedIdentifier %>/decline" method="post" style="display:inline">
+                      <input type="hidden" name="reason" value="Member is not in good standing">
+                      <button type="submit" class="btn small warning">Decline (Not in Good Standing)</button>
+                    </form>
+                  <% } %>
+                <% } else { %>
+                  <form action="/cogs/<%= cogs.sharedIdentifier %>/decline" method="post" style="display:inline">
+                    <input type="hidden" name="reason" value="Member not found">
+                    <button type="submit" class="btn small danger">Decline (Not Found)</button>
+                  </form>
+                <% } %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+
+  <% const outbound = store.allCogsRequests().filter(c => c.isOutbound()); %>
+  <% if (outbound.length > 0) { %>
+    <section class="outbound-cogs">
+      <h3>Outbound COGS Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>To</th>
+            <th>Member #</th>
+            <th>Status</th>
+            <th>Certificate</th>
+            <th>Requested</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% outbound.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).forEach(cogs => { %>
+            <tr>
+              <td><%= h(cogs.targetOrg) %></td>
+              <td class="monospace"><%= h(cogs.requestedMemberNumber) %></td>
+              <td><span class="status <%= cogs.status.toLowerCase() %>"><%= cogs.status %></span></td>
+              <td>
+                <% if (cogs.isApproved() && cogs.certificate) { %>
+                  <% const cert = cogs.certificate; %>
+                  <% const profile = cert.member_profile; %>
+                  <% if (profile) { %>
+                    <strong><%= h(profile.first_name) %> <%= h(profile.last_name) %></strong><br>
+                    Good Standing: <%= cert.good_standing ? 'Yes' : 'No' %><br>
+                    <small>Valid until: <%= formatTime(cert.valid_until) %></small>
+                  <% } %>
+                <% } else if (cogs.isDeclined()) { %>
+                  <em><%= h(cogs.declineReason || 'Declined') %></em>
+                <% } else { %>
+                  -
+                <% } %>
+              </td>
+              <td><%= formatTime(cogs.createdAt) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+
+  <% const inboundCompleted = store.allCogsRequests().filter(c => c.isInbound() && !c.isPending()); %>
+  <% if (inboundCompleted.length > 0) { %>
+    <section class="inbound-completed">
+      <h3>Completed Inbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>Member #</th>
+            <th>Status</th>
+            <th>Processed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% inboundCompleted.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).forEach(cogs => { %>
+            <tr>
+              <td><%= h(cogs.targetOrg) %></td>
+              <td class="monospace"><%= h(cogs.requestedMemberNumber) %></td>
+              <td><span class="status <%= cogs.status.toLowerCase() %>"><%= cogs.status %></span></td>
+              <td><%= formatTime(cogs.createdAt) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+</div>

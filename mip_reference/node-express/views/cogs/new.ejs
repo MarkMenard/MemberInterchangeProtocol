@@ -1,0 +1,76 @@
+<div class="new-cogs">
+  <h2>Request Certificate of Good Standing</h2>
+
+  <% const active = store.activeConnections(); %>
+  <% if (active.length === 0) { %>
+    <p class="warning">You need at least one active connection to request a COGS.</p>
+    <a href="/connections" class="btn">Manage Connections</a>
+  <% } else { %>
+    <form action="/cogs" method="post">
+      <div class="form-group">
+        <label for="target_mip_id">Request From</label>
+        <select id="target_mip_id" name="target_mip_id" required>
+          <option value="">Select a connected organization...</option>
+          <% active.forEach(conn => { %>
+            <option value="<%= conn.mipIdentifier %>"><%= h(conn.organizationName) %></option>
+          <% }); %>
+        </select>
+      </div>
+
+      <fieldset>
+        <legend>Member to Request COGS For</legend>
+        <div class="form-group">
+          <label for="requested_member_number">Member Number (at target organization)</label>
+          <input type="text" id="requested_member_number" name="requested_member_number"
+                 placeholder="e.g., BETA-001" required>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>Requesting Member (from this organization)</legend>
+        <div class="form-group">
+          <label for="requesting_member_number">Member Number</label>
+          <select id="requesting_member_number" name="requesting_member_number">
+            <option value="">Select a member...</option>
+            <% store.allMembers().filter(m => m.goodStanding).forEach(member => { %>
+              <option value="<%= member.memberNumber %>"
+                      data-first="<%= h(member.firstName) %>"
+                      data-last="<%= h(member.lastName) %>">
+                <%= h(member.fullName()) %> (#<%= h(member.memberNumber) %>)
+              </option>
+            <% }); %>
+          </select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="requesting_first_name">First Name</label>
+            <input type="text" id="requesting_first_name" name="requesting_first_name">
+          </div>
+          <div class="form-group">
+            <label for="requesting_last_name">Last Name</label>
+            <input type="text" id="requesting_last_name" name="requesting_last_name">
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="form-group">
+        <label for="notes">Notes (optional)</label>
+        <textarea id="notes" name="notes" rows="3" placeholder="e.g., Member is petitioning for affiliation..."></textarea>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn primary">Submit COGS Request</button>
+        <a href="/cogs" class="btn">Cancel</a>
+      </div>
+    </form>
+
+    <script>
+      // Auto-fill first/last name when selecting a member
+      document.getElementById('requesting_member_number').addEventListener('change', function() {
+        var option = this.options[this.selectedIndex];
+        document.getElementById('requesting_first_name').value = option.dataset.first || '';
+        document.getElementById('requesting_last_name').value = option.dataset.last || '';
+      });
+    </script>
+  <% } %>
+</div>

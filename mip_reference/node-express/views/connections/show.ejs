@@ -1,0 +1,89 @@
+<div class="connection-detail">
+  <h2>Connection: <%= h(connection.organizationName) %></h2>
+
+  <div class="status-badge <%= connection.status.toLowerCase() %>">
+    <%= connection.status %>
+  </div>
+
+  <section class="details">
+    <h3>Connection Details</h3>
+    <dl>
+      <dt>MIP Identifier</dt>
+      <dd class="monospace"><%= h(connection.mipIdentifier) %></dd>
+
+      <dt>MIP URL</dt>
+      <dd class="monospace"><%= h(connection.mipUrl) %></dd>
+
+      <dt>Public Key Fingerprint</dt>
+      <dd class="monospace"><%= h(connection.publicKeyFingerprint()) %></dd>
+
+      <dt>Contact Person</dt>
+      <dd><%= h(connection.contactPerson) %></dd>
+
+      <dt>Contact Phone</dt>
+      <dd><%= h(connection.contactPhone) %></dd>
+
+      <dt>Direction</dt>
+      <dd><%= connection.direction.charAt(0).toUpperCase() + connection.direction.slice(1) %></dd>
+
+      <dt>Daily Rate Limit</dt>
+      <dd><%= connection.dailyRateLimit %> requests/day</dd>
+
+      <dt>Share Organization</dt>
+      <dd><%= connection.shareMyOrganization ? 'Yes' : 'No' %></dd>
+
+      <dt>Connected Since</dt>
+      <dd><%= formatTime(connection.createdAt) %></dd>
+
+      <% if (connection.revokeReason) { %>
+        <dt>Revoke Reason</dt>
+        <dd><%= h(connection.revokeReason) %></dd>
+      <% } %>
+
+      <% if (connection.declineReason) { %>
+        <dt>Decline Reason</dt>
+        <dd><%= h(connection.declineReason) %></dd>
+      <% } %>
+    </dl>
+  </section>
+
+  <section class="endorsements">
+    <h3>Endorsements</h3>
+    <% const endorsements = store.findEndorsementsFor(connection.mipIdentifier); %>
+    <% if (endorsements.length === 0) { %>
+      <p class="empty">No endorsements for this connection</p>
+    <% } else { %>
+      <ul>
+        <% endorsements.forEach(e => { %>
+          <li>
+            From: <%= h(e.endorserMipIdentifier) %><br>
+            Issued: <%= formatTime(e.issuedAt) %><br>
+            Expires: <%= formatTime(e.expiresAt) %>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+  </section>
+
+  <div class="actions">
+    <% if (connection.isPending() && connection.isInbound()) { %>
+      <form action="/connections/<%= connection.mipIdentifier %>/approve" method="post" style="display:inline">
+        <button type="submit" class="btn success">Approve</button>
+      </form>
+      <form action="/connections/<%= connection.mipIdentifier %>/decline" method="post" style="display:inline">
+        <input type="text" name="reason" placeholder="Reason (optional)">
+        <button type="submit" class="btn danger">Decline</button>
+      </form>
+    <% } else if (connection.isActive()) { %>
+      <form action="/connections/<%= connection.mipIdentifier %>/revoke" method="post" style="display:inline">
+        <input type="text" name="reason" placeholder="Reason (optional)">
+        <button type="submit" class="btn danger">Revoke Connection</button>
+      </form>
+    <% } else if (connection.isRevoked()) { %>
+      <form action="/connections/<%= connection.mipIdentifier %>/restore" method="post" style="display:inline">
+        <button type="submit" class="btn primary">Restore Connection</button>
+      </form>
+    <% } %>
+    <a href="/connections" class="btn">Back to Connections</a>
+  </div>
+</div>

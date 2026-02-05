@@ -1,0 +1,139 @@
+<div class="connections">
+  <h2>Connections</h2>
+
+  <section class="new-connection">
+    <h3>Connect to New Node</h3>
+    <form action="/connections" method="post">
+      <div class="form-group">
+        <label for="target_url">Target MIP URL</label>
+        <input type="text" id="target_url" name="target_url"
+               placeholder="http://localhost:4002/mip/node/abc123..." required>
+        <small>Enter the full MIP URL of the node you want to connect to</small>
+      </div>
+      <button type="submit" class="btn primary">Request Connection</button>
+    </form>
+  </section>
+
+  <% const pendingInbound = store.allConnections().filter(c => c.isPending() && c.isInbound()); %>
+  <% if (pendingInbound.length > 0) { %>
+    <section class="pending-requests">
+      <h3>Pending Inbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Contact</th>
+            <th>Key Fingerprint</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pendingInbound.forEach(conn => { %>
+            <tr>
+              <td><%= h(conn.organizationName) %></td>
+              <td><%= h(conn.contactPerson) %></td>
+              <td class="monospace"><%= h(conn.publicKeyFingerprint()) %></td>
+              <td class="actions">
+                <form action="/connections/<%= conn.mipIdentifier %>/approve" method="post" style="display:inline">
+                  <button type="submit" class="btn small success">Approve</button>
+                </form>
+                <form action="/connections/<%= conn.mipIdentifier %>/decline" method="post" style="display:inline">
+                  <button type="submit" class="btn small danger">Decline</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+
+  <% const pendingOutbound = store.allConnections().filter(c => c.isPending() && c.isOutbound()); %>
+  <% if (pendingOutbound.length > 0) { %>
+    <section class="pending-outbound">
+      <h3>Pending Outbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Status</th>
+            <th>Requested</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pendingOutbound.forEach(conn => { %>
+            <tr>
+              <td><%= h(conn.organizationName) %></td>
+              <td><span class="status pending">Awaiting Approval</span></td>
+              <td><%= formatTime(conn.createdAt) %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+
+  <section class="active-connections">
+    <h3>Active Connections</h3>
+    <% const active = store.activeConnections(); %>
+    <% if (active.length === 0) { %>
+      <p class="empty">No active connections</p>
+    <% } else { %>
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Contact</th>
+            <th>Direction</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% active.forEach(conn => { %>
+            <tr>
+              <td>
+                <a href="/connections/<%= conn.mipIdentifier %>"><%= h(conn.organizationName) %></a>
+              </td>
+              <td><%= h(conn.contactPerson) %></td>
+              <td><%= conn.direction.charAt(0).toUpperCase() + conn.direction.slice(1) %></td>
+              <td class="actions">
+                <form action="/connections/<%= conn.mipIdentifier %>/revoke" method="post" style="display:inline">
+                  <button type="submit" class="btn small danger">Revoke</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } %>
+  </section>
+
+  <% const revoked = store.allConnections().filter(c => c.isRevoked()); %>
+  <% if (revoked.length > 0) { %>
+    <section class="revoked-connections">
+      <h3>Revoked Connections</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Reason</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% revoked.forEach(conn => { %>
+            <tr>
+              <td><%= h(conn.organizationName) %></td>
+              <td><%= h(conn.revokeReason || 'No reason given') %></td>
+              <td class="actions">
+                <form action="/connections/<%= conn.mipIdentifier %>/restore" method="post" style="display:inline">
+                  <button type="submit" class="btn small primary">Restore</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+</div>

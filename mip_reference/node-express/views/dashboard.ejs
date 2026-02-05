@@ -1,0 +1,62 @@
+<div class="dashboard">
+  <section class="identity-card">
+    <h2>Node Identity</h2>
+    <dl>
+      <dt>Organization</dt>
+      <dd><%= h(identity.organizationName) %></dd>
+
+      <dt>MIP Identifier</dt>
+      <dd class="monospace"><%= h(identity.mipIdentifier) %></dd>
+
+      <dt>MIP URL</dt>
+      <dd class="monospace"><%= h(identity.mipUrl) %></dd>
+
+      <dt>Public Key Fingerprint</dt>
+      <dd class="monospace"><%= h(identity.publicKeyFingerprint()) %></dd>
+
+      <dt>Contact</dt>
+      <dd><%= h(identity.contactPerson) %> (<%= h(identity.contactPhone) %>)</dd>
+
+      <dt>Trust Threshold</dt>
+      <dd><%= identity.trustThreshold %> endorsement(s) for auto-approval</dd>
+    </dl>
+  </section>
+
+  <section class="stats">
+    <h2>Connection Summary</h2>
+    <div class="stat-grid">
+      <div class="stat active">
+        <span class="number"><%= store.activeConnections().length %></span>
+        <span class="label">Active</span>
+      </div>
+      <div class="stat pending">
+        <span class="number"><%= store.pendingConnections().length %></span>
+        <span class="label">Pending</span>
+      </div>
+      <div class="stat revoked">
+        <span class="number"><%= store.allConnections().filter(c => c.isRevoked()).length %></span>
+        <span class="label">Revoked</span>
+      </div>
+      <div class="stat members">
+        <span class="number"><%= store.allMembers().length %></span>
+        <span class="label">Members</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="activity">
+    <h2>Recent Activity</h2>
+    <% if (store.recentActivity().length === 0) { %>
+      <p class="empty">No recent activity</p>
+    <% } else { %>
+      <ul class="activity-log">
+        <% store.recentActivity(15).forEach(entry => { %>
+          <li>
+            <span class="timestamp"><%= formatTime(entry.timestamp) %></span>
+            <span class="message"><%= h(entry.message) %></span>
+          </li>
+        <% }); %>
+      </ul>
+    <% } %>
+  </section>
+</div>

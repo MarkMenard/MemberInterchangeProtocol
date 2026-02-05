@@ -1,0 +1,14 @@
+{
+  "name": "mip-reference-node-express",
+  "version": "1.0.0",
+  "description": "MIP Reference Implementation - Node.js/Express",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "ejs": "^3.1.10",
+    "express": "^4.21.0",
+    "js-yaml": "^4.1.0"
+  }
+}

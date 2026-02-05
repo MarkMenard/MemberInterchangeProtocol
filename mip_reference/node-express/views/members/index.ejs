@@ -1,0 +1,61 @@
+<div class="members">
+  <h2>Members</h2>
+
+  <p>Local members in this organization's database.</p>
+
+  <% const members = store.allMembers(); %>
+  <% if (members.length === 0) { %>
+    <p class="empty">No members loaded</p>
+  <% } else { %>
+    <table>
+      <thead>
+        <tr>
+          <th>Member #</th>
+          <th>Name</th>
+          <th>Birthdate</th>
+          <th>Status</th>
+          <th>Good Standing</th>
+          <th>Primary Affiliation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% members.forEach(member => { %>
+          <tr class="<%= member.isActive ? '' : 'inactive' %>">
+            <td class="monospace"><%= h(member.memberNumber) %></td>
+            <td>
+              <% if (member.honorific) { %>
+                <span class="honorific"><%= h(member.honorific) %></span>
+              <% } %>
+              <%= h(member.fullName()) %>
+              <% if (member.rank) { %>
+                <span class="rank">(<%= h(member.rank) %>)</span>
+              <% } %>
+            </td>
+            <td><%= h(member.birthdate) %></td>
+            <td>
+              <span class="status <%= member.isActive ? 'active' : 'inactive' %>">
+                <%= h(member.status) %>
+              </span>
+            </td>
+            <td>
+              <% if (member.goodStanding) { %>
+                <span class="good-standing yes">Yes</span>
+              <% } else { %>
+                <span class="good-standing no">No</span>
+              <% } %>
+            </td>
+            <td>
+              <% const primary = member.affiliations.find(a => a.level === 'Primary') || member.affiliations[0]; %>
+              <% if (primary) { %>
+                <%= h(primary.local_name) %>
+                <br><small><%= h(primary.member_type) %></small>
+              <% } else { %>
+                -
+              <% } %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
