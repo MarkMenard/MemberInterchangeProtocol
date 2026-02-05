@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # MIP Reference Implementation - Demo Startup Script
-# Starts 3 MIP nodes on ports 4001, 4002, 4003
+# Starts 3 MIP nodes on ports 4010, 4011, 4012
 
 set -e
 
@@ -50,9 +50,9 @@ echo "=================================================="
 echo "    Nodes Started!"
 echo "=================================================="
 echo ""
-echo "  Node 1 (Grand Lodge of Alpha): http://localhost:4001"
-echo "  Node 2 (Grand Lodge of Beta):  http://localhost:4002"
-echo "  Node 3 (Grand Lodge of Gamma): http://localhost:4003"
+echo "  Node 1 (Grand Lodge of Alpha): http://localhost:4010"
+echo "  Node 2 (Grand Lodge of Beta):  http://localhost:4011"
+echo "  Node 3 (Grand Lodge of Gamma): http://localhost:4012"
 echo ""
 echo "Log files are in the tmp/ directory."
 echo ""

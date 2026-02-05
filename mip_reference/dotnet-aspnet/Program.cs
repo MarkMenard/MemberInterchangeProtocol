@@ -1166,7 +1166,7 @@ string GenerateConnectionsHtml(Store store, NodeIdentity identity)
     var content = $@"
 <h2>Connections</h2>
 <form method=""post"" action=""/connections"" class=""inline-form"">
-    <input type=""text"" name=""target_url"" placeholder=""Target MIP URL (e.g., http://localhost:4002/mip/node/abc123)"" required>
+    <input type=""text"" name=""target_url"" placeholder=""Target MIP URL (e.g., http://localhost:4005/mip/node/abc123)"" required>
     <button type=""submit"">Request Connection</button>
 </form>
 <table>
