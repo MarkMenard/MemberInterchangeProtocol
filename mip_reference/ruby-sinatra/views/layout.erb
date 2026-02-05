@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= identity.organization_name %> - MIP Dashboard</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <h1><%= h identity.organization_name %></h1>
+    <nav>
+      <a href="/" class="<%= 'active' if request.path_info == '/' %>">Dashboard</a>
+      <a href="/connections" class="<%= 'active' if request.path_info.start_with?('/connections') %>">Connections</a>
+      <a href="/members" class="<%= 'active' if request.path_info.start_with?('/members') %>">Members</a>
+      <a href="/searches" class="<%= 'active' if request.path_info.start_with?('/searches') %>">Searches</a>
+      <a href="/cogs" class="<%= 'active' if request.path_info.start_with?('/cogs') %>">COGS</a>
+    </nav>
+  </header>
+
+  <main>
+    <%= yield %>
+  </main>
+
+  <footer>
+    <p>MIP Reference Implementation v<%= MIP::VERSION %></p>
+  </footer>
+</body>
+</html>

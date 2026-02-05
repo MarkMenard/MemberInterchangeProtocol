@@ -1,0 +1,89 @@
+<div class="connection-detail">
+  <h2>Connection: <%= h @connection.organization_name %></h2>
+
+  <div class="status-badge <%= @connection.status.downcase %>">
+    <%= @connection.status %>
+  </div>
+
+  <section class="details">
+    <h3>Connection Details</h3>
+    <dl>
+      <dt>MIP Identifier</dt>
+      <dd class="monospace"><%= h @connection.mip_identifier %></dd>
+
+      <dt>MIP URL</dt>
+      <dd class="monospace"><%= h @connection.mip_url %></dd>
+
+      <dt>Public Key Fingerprint</dt>
+      <dd class="monospace"><%= h @connection.public_key_fingerprint %></dd>
+
+      <dt>Contact Person</dt>
+      <dd><%= h @connection.contact_person %></dd>
+
+      <dt>Contact Phone</dt>
+      <dd><%= h @connection.contact_phone %></dd>
+
+      <dt>Direction</dt>
+      <dd><%= @connection.direction.capitalize %></dd>
+
+      <dt>Daily Rate Limit</dt>
+      <dd><%= @connection.daily_rate_limit %> requests/day</dd>
+
+      <dt>Share Organization</dt>
+      <dd><%= @connection.share_my_organization ? 'Yes' : 'No' %></dd>
+
+      <dt>Connected Since</dt>
+      <dd><%= format_time(@connection.created_at) %></dd>
+
+      <% if @connection.revoke_reason %>
+        <dt>Revoke Reason</dt>
+        <dd><%= h @connection.revoke_reason %></dd>
+      <% end %>
+
+      <% if @connection.decline_reason %>
+        <dt>Decline Reason</dt>
+        <dd><%= h @connection.decline_reason %></dd>
+      <% end %>
+    </dl>
+  </section>
+
+  <section class="endorsements">
+    <h3>Endorsements</h3>
+    <% endorsements = store.find_endorsements_for(@connection.mip_identifier) %>
+    <% if endorsements.empty? %>
+      <p class="empty">No endorsements for this connection</p>
+    <% else %>
+      <ul>
+        <% endorsements.each do |e| %>
+          <li>
+            From: <%= h e.endorser_mip_identifier %><br>
+            Issued: <%= format_time(e.issued_at) %><br>
+            Expires: <%= format_time(e.expires_at) %>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
+  </section>
+
+  <div class="actions">
+    <% if @connection.pending? && @connection.inbound? %>
+      <form action="/connections/<%= @connection.mip_identifier %>/approve" method="post" style="display:inline">
+        <button type="submit" class="btn success">Approve</button>
+      </form>
+      <form action="/connections/<%= @connection.mip_identifier %>/decline" method="post" style="display:inline">
+        <input type="text" name="reason" placeholder="Reason (optional)">
+        <button type="submit" class="btn danger">Decline</button>
+      </form>
+    <% elsif @connection.active? %>
+      <form action="/connections/<%= @connection.mip_identifier %>/revoke" method="post" style="display:inline">
+        <input type="text" name="reason" placeholder="Reason (optional)">
+        <button type="submit" class="btn danger">Revoke Connection</button>
+      </form>
+    <% elsif @connection.revoked? %>
+      <form action="/connections/<%= @connection.mip_identifier %>/restore" method="post" style="display:inline">
+        <button type="submit" class="btn primary">Restore Connection</button>
+      </form>
+    <% end %>
+    <a href="/connections" class="btn">Back to Connections</a>
+  </div>
+</div>

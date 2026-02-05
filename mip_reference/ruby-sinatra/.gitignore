@@ -1,0 +1,8 @@
+# Runtime files
+tmp/
+*.pid
+*.log
+
+# Bundle
+.bundle/
+vendor/bundle/

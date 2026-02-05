@@ -1,0 +1,61 @@
+<div class="members">
+  <h2>Members</h2>
+
+  <p>Local members in this organization's database.</p>
+
+  <% members = store.all_members %>
+  <% if members.empty? %>
+    <p class="empty">No members loaded</p>
+  <% else %>
+    <table>
+      <thead>
+        <tr>
+          <th>Member #</th>
+          <th>Name</th>
+          <th>Birthdate</th>
+          <th>Status</th>
+          <th>Good Standing</th>
+          <th>Primary Affiliation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% members.each do |member| %>
+          <tr class="<%= member.is_active ? '' : 'inactive' %>">
+            <td class="monospace"><%= h member.member_number %></td>
+            <td>
+              <% if member.honorific %>
+                <span class="honorific"><%= h member.honorific %></span>
+              <% end %>
+              <%= h member.full_name %>
+              <% if member.rank %>
+                <span class="rank">(<%= h member.rank %>)</span>
+              <% end %>
+            </td>
+            <td><%= h member.birthdate %></td>
+            <td>
+              <span class="status <%= member.is_active ? 'active' : 'inactive' %>">
+                <%= h member.status %>
+              </span>
+            </td>
+            <td>
+              <% if member.good_standing %>
+                <span class="good-standing yes">Yes</span>
+              <% else %>
+                <span class="good-standing no">No</span>
+              <% end %>
+            </td>
+            <td>
+              <% primary = member.affiliations.find { |a| a[:level] == 'Primary' } || member.affiliations.first %>
+              <% if primary %>
+                <%= h primary[:local_name] %>
+                <br><small><%= h primary[:member_type] %></small>
+              <% else %>
+                -
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>

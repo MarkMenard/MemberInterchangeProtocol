@@ -1,0 +1,62 @@
+<div class="dashboard">
+  <section class="identity-card">
+    <h2>Node Identity</h2>
+    <dl>
+      <dt>Organization</dt>
+      <dd><%= h identity.organization_name %></dd>
+
+      <dt>MIP Identifier</dt>
+      <dd class="monospace"><%= h identity.mip_identifier %></dd>
+
+      <dt>MIP URL</dt>
+      <dd class="monospace"><%= h identity.mip_url %></dd>
+
+      <dt>Public Key Fingerprint</dt>
+      <dd class="monospace"><%= h identity.public_key_fingerprint %></dd>
+
+      <dt>Contact</dt>
+      <dd><%= h identity.contact_person %> (<%= h identity.contact_phone %>)</dd>
+
+      <dt>Trust Threshold</dt>
+      <dd><%= identity.trust_threshold %> endorsement(s) for auto-approval</dd>
+    </dl>
+  </section>
+
+  <section class="stats">
+    <h2>Connection Summary</h2>
+    <div class="stat-grid">
+      <div class="stat active">
+        <span class="number"><%= store.active_connections.count %></span>
+        <span class="label">Active</span>
+      </div>
+      <div class="stat pending">
+        <span class="number"><%= store.pending_connections.count %></span>
+        <span class="label">Pending</span>
+      </div>
+      <div class="stat revoked">
+        <span class="number"><%= store.all_connections.count { |c| c.revoked? } %></span>
+        <span class="label">Revoked</span>
+      </div>
+      <div class="stat members">
+        <span class="number"><%= store.all_members.count %></span>
+        <span class="label">Members</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="activity">
+    <h2>Recent Activity</h2>
+    <% if store.recent_activity.empty? %>
+      <p class="empty">No recent activity</p>
+    <% else %>
+      <ul class="activity-log">
+        <% store.recent_activity(15).each do |entry| %>
+          <li>
+            <span class="timestamp"><%= format_time(entry[:timestamp]) %></span>
+            <span class="message"><%= h entry[:message] %></span>
+          </li>
+        <% end %>
+      </ul>
+    <% end %>
+  </section>
+</div>

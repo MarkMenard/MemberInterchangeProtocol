@@ -1,0 +1,129 @@
+<div class="cogs">
+  <h2>Certificates of Good Standing</h2>
+
+  <a href="/cogs/new" class="btn primary">Request COGS</a>
+
+  <% inbound_pending = store.all_cogs_requests.select { |c| c.inbound? && c.pending? } %>
+  <% unless inbound_pending.empty? %>
+    <section class="pending-inbound">
+      <h3>Pending Inbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>Requested Member</th>
+            <th>Requesting Member</th>
+            <th>Notes</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% inbound_pending.each do |cogs| %>
+            <tr>
+              <td><%= h cogs.target_org %></td>
+              <td class="monospace"><%= h cogs.requested_member_number %></td>
+              <td>
+                <% rm = cogs.requesting_member %>
+                <%= h rm['first_name'] || rm[:first_name] %> <%= h rm['last_name'] || rm[:last_name] %>
+                <% if rm['member_number'] || rm[:member_number] %>
+                  <br><small>#<%= h rm['member_number'] || rm[:member_number] %></small>
+                <% end %>
+              </td>
+              <td><%= h cogs.notes %></td>
+              <td class="actions">
+                <% member = store.find_member(cogs.requested_member_number) %>
+                <% if member %>
+                  <% if member.good_standing %>
+                    <form action="/cogs/<%= cogs.shared_identifier %>/approve" method="post" style="display:inline">
+                      <button type="submit" class="btn small success">Approve</button>
+                    </form>
+                  <% else %>
+                    <form action="/cogs/<%= cogs.shared_identifier %>/decline" method="post" style="display:inline">
+                      <input type="hidden" name="reason" value="Member is not in good standing">
+                      <button type="submit" class="btn small warning">Decline (Not in Good Standing)</button>
+                    </form>
+                  <% end %>
+                <% else %>
+                  <form action="/cogs/<%= cogs.shared_identifier %>/decline" method="post" style="display:inline">
+                    <input type="hidden" name="reason" value="Member not found">
+                    <button type="submit" class="btn small danger">Decline (Not Found)</button>
+                  </form>
+                <% end %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+
+  <% outbound = store.all_cogs_requests.select(&:outbound?) %>
+  <% unless outbound.empty? %>
+    <section class="outbound-cogs">
+      <h3>Outbound COGS Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>To</th>
+            <th>Member #</th>
+            <th>Status</th>
+            <th>Certificate</th>
+            <th>Requested</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% outbound.sort_by { |c| c.created_at }.reverse.each do |cogs| %>
+            <tr>
+              <td><%= h cogs.target_org %></td>
+              <td class="monospace"><%= h cogs.requested_member_number %></td>
+              <td><span class="status <%= cogs.status.downcase %>"><%= cogs.status %></span></td>
+              <td>
+                <% if cogs.approved? && cogs.certificate %>
+                  <% cert = cogs.certificate %>
+                  <% profile = cert['member_profile'] || cert[:member_profile] %>
+                  <% if profile %>
+                    <strong><%= h profile['first_name'] || profile[:first_name] %> <%= h profile['last_name'] || profile[:last_name] %></strong><br>
+                    Good Standing: <%= (cert['good_standing'] || cert[:good_standing]) ? 'Yes' : 'No' %><br>
+                    <small>Valid until: <%= format_time(cert['valid_until'] || cert[:valid_until]) %></small>
+                  <% end %>
+                <% elsif cogs.declined? %>
+                  <em><%= h cogs.decline_reason || 'Declined' %></em>
+                <% else %>
+                  -
+                <% end %>
+              </td>
+              <td><%= format_time(cogs.created_at) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+
+  <% inbound_completed = store.all_cogs_requests.select { |c| c.inbound? && !c.pending? } %>
+  <% unless inbound_completed.empty? %>
+    <section class="inbound-completed">
+      <h3>Completed Inbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>Member #</th>
+            <th>Status</th>
+            <th>Processed</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% inbound_completed.sort_by { |c| c.created_at }.reverse.each do |cogs| %>
+            <tr>
+              <td><%= h cogs.target_org %></td>
+              <td class="monospace"><%= h cogs.requested_member_number %></td>
+              <td><span class="status <%= cogs.status.downcase %>"><%= cogs.status %></span></td>
+              <td><%= format_time(cogs.created_at) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+</div>

@@ -1,0 +1,116 @@
+<div class="searches">
+  <h2>Member Searches</h2>
+
+  <a href="/searches/new" class="btn primary">New Search</a>
+
+  <% inbound_pending = store.all_search_requests.select { |s| s.inbound? && s.pending? } %>
+  <% unless inbound_pending.empty? %>
+    <section class="pending-inbound">
+      <h3>Pending Inbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>Search Criteria</th>
+            <th>Received</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% inbound_pending.each do |search| %>
+            <tr>
+              <td><%= h search.target_org %></td>
+              <td><%= h search.search_description %></td>
+              <td><%= format_time(search.created_at) %></td>
+              <td class="actions">
+                <form action="/searches/<%= search.shared_identifier %>/approve" method="post" style="display:inline">
+                  <button type="submit" class="btn small success">Approve</button>
+                </form>
+                <form action="/searches/<%= search.shared_identifier %>/decline" method="post" style="display:inline">
+                  <button type="submit" class="btn small danger">Decline</button>
+                </form>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+
+  <% outbound = store.all_search_requests.select(&:outbound?) %>
+  <% unless outbound.empty? %>
+    <section class="outbound-searches">
+      <h3>Outbound Searches</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>To</th>
+            <th>Search Criteria</th>
+            <th>Status</th>
+            <th>Results</th>
+            <th>Sent</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% outbound.sort_by { |s| s.created_at }.reverse.each do |search| %>
+            <tr>
+              <td><%= h search.target_org %></td>
+              <td><%= h search.search_description %></td>
+              <td><span class="status <%= search.status.downcase %>"><%= search.status %></span></td>
+              <td>
+                <% if search.approved? && search.matches.any? %>
+                  <%= search.matches.count %> match(es)
+                  <ul class="match-list">
+                    <% search.matches.each do |match| %>
+                      <li>
+                        <strong><%= h match['first_name'] || match[:first_name] %> <%= h match['last_name'] || match[:last_name] %></strong>
+                        (#<%= h match['member_number'] || match[:member_number] %>)
+                        - <%= h (match['group_status'] || match[:group_status])&.dig('status') || (match['group_status'] || match[:group_status])&.dig(:status) %>
+                      </li>
+                    <% end %>
+                  </ul>
+                <% elsif search.approved? %>
+                  No matches
+                <% elsif search.declined? %>
+                  <em><%= h search.decline_reason || 'Declined' %></em>
+                <% else %>
+                  -
+                <% end %>
+              </td>
+              <td><%= format_time(search.created_at) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+
+  <% inbound_completed = store.all_search_requests.select { |s| s.inbound? && !s.pending? } %>
+  <% unless inbound_completed.empty? %>
+    <section class="inbound-completed">
+      <h3>Completed Inbound Searches</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>From</th>
+            <th>Search Criteria</th>
+            <th>Status</th>
+            <th>Matches</th>
+            <th>Received</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% inbound_completed.sort_by { |s| s.created_at }.reverse.each do |search| %>
+            <tr>
+              <td><%= h search.target_org %></td>
+              <td><%= h search.search_description %></td>
+              <td><span class="status <%= search.status.downcase %>"><%= search.status %></span></td>
+              <td><%= search.approved? ? search.matches.count : '-' %></td>
+              <td><%= format_time(search.created_at) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+</div>

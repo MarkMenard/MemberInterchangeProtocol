@@ -1,0 +1,139 @@
+<div class="connections">
+  <h2>Connections</h2>
+
+  <section class="new-connection">
+    <h3>Connect to New Node</h3>
+    <form action="/connections" method="post">
+      <div class="form-group">
+        <label for="target_url">Target MIP URL</label>
+        <input type="text" id="target_url" name="target_url"
+               placeholder="http://localhost:4002/mip/node/abc123..." required>
+        <small>Enter the full MIP URL of the node you want to connect to</small>
+      </div>
+      <button type="submit" class="btn primary">Request Connection</button>
+    </form>
+  </section>
+
+  <% pending_inbound = store.all_connections.select { |c| c.pending? && c.inbound? } %>
+  <% unless pending_inbound.empty? %>
+    <section class="pending-requests">
+      <h3>Pending Inbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Contact</th>
+            <th>Key Fingerprint</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pending_inbound.each do |conn| %>
+            <tr>
+              <td><%= h conn.organization_name %></td>
+              <td><%= h conn.contact_person %></td>
+              <td class="monospace"><%= h conn.public_key_fingerprint %></td>
+              <td class="actions">
+                <form action="/connections/<%= conn.mip_identifier %>/approve" method="post" style="display:inline">
+                  <button type="submit" class="btn small success">Approve</button>
+                </form>
+                <form action="/connections/<%= conn.mip_identifier %>/decline" method="post" style="display:inline">
+                  <button type="submit" class="btn small danger">Decline</button>
+                </form>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+
+  <% pending_outbound = store.all_connections.select { |c| c.pending? && c.outbound? } %>
+  <% unless pending_outbound.empty? %>
+    <section class="pending-outbound">
+      <h3>Pending Outbound Requests</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Status</th>
+            <th>Requested</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pending_outbound.each do |conn| %>
+            <tr>
+              <td><%= h conn.organization_name %></td>
+              <td><span class="status pending">Awaiting Approval</span></td>
+              <td><%= format_time(conn.created_at) %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+
+  <section class="active-connections">
+    <h3>Active Connections</h3>
+    <% active = store.active_connections %>
+    <% if active.empty? %>
+      <p class="empty">No active connections</p>
+    <% else %>
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Contact</th>
+            <th>Direction</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% active.each do |conn| %>
+            <tr>
+              <td>
+                <a href="/connections/<%= conn.mip_identifier %>"><%= h conn.organization_name %></a>
+              </td>
+              <td><%= h conn.contact_person %></td>
+              <td><%= conn.direction.capitalize %></td>
+              <td class="actions">
+                <form action="/connections/<%= conn.mip_identifier %>/revoke" method="post" style="display:inline">
+                  <button type="submit" class="btn small danger">Revoke</button>
+                </form>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+  </section>
+
+  <% revoked = store.all_connections.select(&:revoked?) %>
+  <% unless revoked.empty? %>
+    <section class="revoked-connections">
+      <h3>Revoked Connections</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Organization</th>
+            <th>Reason</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% revoked.each do |conn| %>
+            <tr>
+              <td><%= h conn.organization_name %></td>
+              <td><%= h conn.revoke_reason || 'No reason given' %></td>
+              <td class="actions">
+                <form action="/connections/<%= conn.mip_identifier %>/restore" method="post" style="display:inline">
+                  <button type="submit" class="btn small primary">Restore</button>
+                </form>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </section>
+  <% end %>
+</div>
