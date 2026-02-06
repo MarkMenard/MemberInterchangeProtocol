@@ -31,6 +31,71 @@ If your organization is part of a confederation of member-based organizations wh
 
 MIP was conceived to address the needs of the organizations in the Conference of Grand Secretaries in North America (CGSNA) (https://www.cogsna.org/) to share information on persons who hold membership in multiple organizations within their ecosystem, or who are wishing to move their membership from one organization to another. Most of the organizations within the CGSNA run different member management systems, but have the need to share information and member status within the CGSNA ecosystem. MIP provides a protocol that allows the various systems used to manage members to share that information in a vendor independent fashion.
 
+# Try it Out - Reference Implementations
+
+This project contains reference implementations of the Member Interchange Protocol in multiple languages and frameworks to demonstrate interoperability and provide a starting point for developers.
+
+## Available Implementations
+
+1.  **Node.js / Express**: A fast, asynchronous implementation using EJS templates.
+2.  **PHP / Laravel**: A robust implementation using the Laravel framework.
+3.  **Ruby / Sinatra**: A lightweight implementation using the Sinatra framework.
+4.  **.NET / ASP.NET Core**: A cross-platform implementation using ASP.NET Core.
+
+---
+
+## Running the Node.js Interactive Demo
+
+The Node.js implementation includes an automated interactive demo that launches three independent nodes and walks through the protocol steps including the Web of Trust and Cross-Organization Member Search.
+
+### 1. Prerequisites: Install Node.js
+
+You will need Node.js (v18 or higher) installed on your machine.
+
+#### macOS
+The easiest way to install Node.js on macOS is via [Homebrew](https://brew.sh/):
+```bash
+brew install node
+```
+
+#### Linux (Ubuntu/Debian)
+On Ubuntu or Debian-based distributions, use the NodeSource repository:
+```bash
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+NODE_MAJOR=20
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+sudo apt update
+sudo apt install nodejs -y
+```
+
+### 2. Setup and Installation
+
+Navigate to the Node.js implementation directory and install the required dependencies:
+
+```bash
+cd mip_reference/node-express
+npm install
+```
+
+### 3. Run the Demo
+
+Launch the interactive demo script:
+
+```bash
+npm run demo
+```
+
+The script will:
+- Start 3 independent MIP nodes (Alpha, Beta, and Gamma).
+- Launch a Chrome browser with 3 separate windows.
+- Provide step-by-step instructions in your terminal.
+- Pause at each stage so you can observe the state changes across different organizations.
+- Demonstrate manual connections, Web of Trust auto-approvals, and cross-node member verification.
+
+
+
 # Definitions
 
 - Local Group: A local group that is chartered by a Parent Group and is the unit that a party belongs to as a member.
@@ -138,66 +203,3 @@ There are many potential functions that could be added to MIP such as:
 - Automatic display of linked member status in member profiles
 
 An important differentiator of using MIP over having a centralized clearing house is there would be no need for a third-party to store the connections between members in discrete member databases. All of those connections would ONLY be housed with the organizations the member belongs to. No need to trust a third-party with your data in any way at all.
-
-# Reference Implementations
-
-This project contains reference implementations of the Member Interchange Protocol in multiple languages and frameworks to demonstrate interoperability and provide a starting point for developers.
-
-## Available Implementations
-
-1.  **Node.js / Express**: A fast, asynchronous implementation using a SQLite database and EJS templates.
-2.  **PHP / Laravel**: A robust implementation using the Laravel framework.
-3.  **Python / Flask**: (Coming Soon)
-4.  **Go / Gin**: (Coming Soon)
-
----
-
-## Running the Node.js Interactive Demo
-
-The Node.js implementation includes an automated interactive demo that launches three independent nodes and walks through the protocol steps including the Web of Trust and Cross-Organization Member Search.
-
-### 1. Prerequisites: Install Node.js
-
-You will need Node.js (v18 or higher) installed on your machine.
-
-#### macOS
-The easiest way to install Node.js on macOS is via [Homebrew](https://brew.sh/):
-```bash
-brew install node
-```
-
-#### Linux (Ubuntu/Debian)
-On Ubuntu or Debian-based distributions, use the NodeSource repository:
-```bash
-sudo apt update
-sudo apt install -y ca-certificates curl gnupg
-curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-NODE_MAJOR=20
-echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_$NODE_MAJOR.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
-sudo apt update
-sudo apt install nodejs -y
-```
-
-### 2. Setup and Installation
-
-Navigate to the Node.js implementation directory and install the required dependencies:
-
-```bash
-cd mip_reference/node-express
-npm install
-```
-
-### 3. Run the Demo
-
-Launch the interactive demo script:
-
-```bash
-npm run demo
-```
-
-The script will:
-- Start 3 independent MIP nodes (Alpha, Beta, and Gamma).
-- Launch a Chrome browser with 3 separate windows.
-- Provide step-by-step instructions in your terminal.
-- Pause at each stage so you can observe the state changes across different organizations.
-- Demonstrate manual connections, Web of Trust auto-approvals, and cross-node member verification.
