@@ -4,11 +4,13 @@
   "description": "MIP Reference Implementation - Node.js/Express",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "demo": "node demo.js"
   },
   "dependencies": {
     "ejs": "^3.1.10",
     "express": "^4.21.0",
-    "js-yaml": "^4.1.0"
+    "js-yaml": "^4.1.0",
+    "puppeteer": "^24.0.0"
   }
 }
