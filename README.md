@@ -94,8 +94,6 @@ The script will:
 - Pause at each stage so you can observe the state changes across different organizations.
 - Demonstrate manual connections, Web of Trust auto-approvals, and cross-node member verification.
 
-
-
 # Definitions
 
 - Local Group: A local group that is chartered by a Parent Group and is the unit that a party belongs to as a member.
