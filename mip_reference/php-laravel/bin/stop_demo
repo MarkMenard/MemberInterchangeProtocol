@@ -1,0 +1,40 @@
+#!/bin/bash
+
+# MIP Laravel Demo - Stop all nodes
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_DIR"
+
+stopped=0
+
+for node in 1 2 3; do
+    pid_file="tmp/node${node}.pid"
+    if [ -f "$pid_file" ]; then
+        pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+            echo "Stopped Node $node (PID $pid)"
+            ((stopped++))
+        fi
+        rm -f "$pid_file"
+    fi
+done
+
+# Also kill any lingering php artisan serve processes on our ports
+for port in 4007 4008 4009; do
+    pid=$(lsof -ti:$port 2>/dev/null || true)
+    if [ -n "$pid" ]; then
+        kill $pid 2>/dev/null || true
+    fi
+done
+
+if [ $stopped -eq 0 ]; then
+    echo "No running demo instances found."
+else
+    echo ""
+    echo "Stopped $stopped node(s)."
+fi
+
+echo "Demo stopped."

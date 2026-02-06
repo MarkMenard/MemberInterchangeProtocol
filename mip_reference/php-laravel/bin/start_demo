@@ -1,0 +1,81 @@
+#!/bin/bash
+
+# MIP Laravel Demo - Start 3 nodes
+# Each node runs as a separate PHP process with its own in-memory state
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+cd "$PROJECT_DIR"
+
+# Check if already running
+if [ -f tmp/node1.pid ] && kill -0 $(cat tmp/node1.pid) 2>/dev/null; then
+    echo "Demo is already running. Run ./bin/stop_demo first."
+    exit 1
+fi
+
+# Create tmp directory for PID files and logs
+mkdir -p tmp
+
+# Install dependencies if needed
+if [ ! -d vendor ]; then
+    echo "Installing dependencies..."
+    composer install --quiet
+fi
+
+echo "Starting MIP Laravel Demo (3 separate PHP processes)..."
+echo ""
+
+# Start Node 1 (Grand Lodge of Alpha) on port 4007
+echo "Starting Node 1 (Grand Lodge of Alpha) on port 4007..."
+MIP_NODE_CONFIG=node1 php artisan serve --port=4007 --host=127.0.0.1 --no-reload > tmp/node1.log 2>&1 &
+echo $! > tmp/node1.pid
+
+# Start Node 2 (Grand Lodge of Beta) on port 4008
+echo "Starting Node 2 (Grand Lodge of Beta) on port 4008..."
+MIP_NODE_CONFIG=node2 php artisan serve --port=4008 --host=127.0.0.1 --no-reload > tmp/node2.log 2>&1 &
+echo $! > tmp/node2.pid
+
+# Start Node 3 (Grand Lodge of Gamma) on port 4009
+echo "Starting Node 3 (Grand Lodge of Gamma) on port 4009..."
+MIP_NODE_CONFIG=node3 php artisan serve --port=4009 --host=127.0.0.1 --no-reload > tmp/node3.log 2>&1 &
+echo $! > tmp/node3.pid
+
+# Wait for servers to start
+sleep 2
+
+# Verify all nodes are running
+echo ""
+echo "Verifying nodes..."
+for port in 4007 4008 4009; do
+    if curl -s "http://localhost:$port/profile" > /dev/null 2>&1; then
+        echo "  Port $port: OK"
+    else
+        echo "  Port $port: FAILED (check tmp/node*.log)"
+    fi
+done
+
+echo ""
+echo "=========================================="
+echo "MIP Laravel Demo is running!"
+echo "=========================================="
+echo ""
+echo "Access the admin interfaces:"
+echo "  Node 1 (Grand Lodge of Alpha): http://localhost:4007"
+echo "  Node 2 (Grand Lodge of Beta):  http://localhost:4008"
+echo "  Node 3 (Grand Lodge of Gamma): http://localhost:4009"
+echo ""
+echo "Demo Scenario:"
+echo "  1. Open Node 1 (http://localhost:4007) in a browser"
+echo "  2. Go to Connections and connect to http://localhost:4008"
+echo "  3. Open Node 2 (http://localhost:4008) and approve the connection"
+echo "  4. Now connect Node 2 to Node 3 (http://localhost:4009)"
+echo "  5. Approve in Node 3"
+echo "  6. Finally, connect Node 1 to Node 3"
+echo "  7. Watch it auto-approve via web-of-trust!"
+echo ""
+echo "To stop: ./bin/stop_demo"
+echo ""
+echo "Logs are in: tmp/node1.log, tmp/node2.log, tmp/node3.log"
