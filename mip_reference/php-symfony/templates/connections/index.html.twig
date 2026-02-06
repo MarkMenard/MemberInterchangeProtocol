@@ -1,0 +1,74 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+<div class="card">
+    <div class="card-header">
+        <h2>Initiate Connection</h2>
+    </div>
+    <div class="card-body">
+        <form action="{{ path('connection_new') }}" method="post" class="form-inline">
+            <div class="form-group" style="flex: 2">
+                <label for="target_url">Target MIP URL</label>
+                <input type="url" name="target_url" id="target_url" placeholder="http://localhost:4014/mip/node/..." required>
+            </div>
+            <button type="submit" class="btn btn-primary">Request Connection</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Connections</h2>
+    </div>
+    <div class="card-body">
+        {% if connections is empty %}
+            <p class="empty">No connections yet</p>
+        {% else %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Organization</th>
+                        <th>Direction</th>
+                        <th>Status</th>
+                        <th>MIP URL</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for conn in connections %}
+                        <tr>
+                            <td>
+                                <strong>{{ conn.organizationName }}</strong>
+                                {% if conn.contactPerson %}
+                                    <br><small style="color: var(--gray-500)">{{ conn.contactPerson }}</small>
+                                {% endif %}
+                            </td>
+                            <td><span class="badge {{ conn.direction }}">{{ conn.direction }}</span></td>
+                            <td><span class="badge {{ conn.status|lower }}">{{ conn.status }}</span></td>
+                            <td><code class="monospace" style="font-size: 0.7rem">{{ conn.mipUrl|slice(0, 60) }}...</code></td>
+                            <td>
+                                {% if conn.isPending and conn.isInbound %}
+                                    <form action="{{ path('connection_approve', {mipId: conn.mipIdentifier}) }}" method="post" style="display: inline;">
+                                        <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                                    </form>
+                                    <form action="{{ path('connection_decline', {mipId: conn.mipIdentifier}) }}" method="post" style="display: inline;">
+                                        <button type="submit" class="btn btn-danger btn-sm">Decline</button>
+                                    </form>
+                                {% elseif conn.isActive %}
+                                    <form action="{{ path('connection_revoke', {mipId: conn.mipIdentifier}) }}" method="post" style="display: inline;">
+                                        <button type="submit" class="btn btn-danger btn-sm">Revoke</button>
+                                    </form>
+                                {% elseif conn.isRevoked %}
+                                    <form action="{{ path('connection_restore', {mipId: conn.mipIdentifier}) }}" method="post" style="display: inline;">
+                                        <button type="submit" class="btn btn-success btn-sm">Restore</button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

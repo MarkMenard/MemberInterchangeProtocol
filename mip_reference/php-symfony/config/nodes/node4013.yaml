@@ -1,0 +1,105 @@
+organization_name: "Grand Lodge of Alpha"
+contact_person: "Alice Anderson"
+contact_phone: "+1-555-4013"
+share_my_organization: true
+trust_threshold: 1
+
+members:
+  - member_number: "ALPHA-001"
+    first_name: "John"
+    last_name: "Smith"
+    birthdate: "1975-03-15"
+    status: "Active"
+    is_active: true
+    good_standing: true
+    years_in_good_standing: 20
+    email: "john.smith@example.com"
+    phone: "+1-555-1001"
+    address:
+      address1: "123 Main Street"
+      city: "Alpha City"
+      state: "AC"
+      postal_code: "10001"
+      country: "US"
+    affiliations:
+      - local_name: "Unity Lodge No. 1"
+        local_number: "1"
+        local_location: "Alpha City, AC"
+        member_type: "Master Mason"
+        local_status: "Active"
+        is_active: true
+        level: "Primary"
+        date: "2005-03-15"
+    life_cycle_events:
+      - event_name: "Initiated"
+        date: "2005-01-10"
+        local_name: "Unity Lodge No. 1"
+      - event_name: "Passed"
+        date: "2005-02-14"
+        local_name: "Unity Lodge No. 1"
+      - event_name: "Raised"
+        date: "2005-03-15"
+        local_name: "Unity Lodge No. 1"
+
+  - member_number: "ALPHA-002"
+    first_name: "Robert"
+    last_name: "Johnson"
+    birthdate: "1980-07-22"
+    status: "Active"
+    is_active: true
+    good_standing: true
+    years_in_good_standing: 15
+    email: "robert.johnson@example.com"
+    phone: "+1-555-1002"
+    address:
+      address1: "456 Oak Avenue"
+      city: "Alpha City"
+      state: "AC"
+      postal_code: "10002"
+      country: "US"
+    affiliations:
+      - local_name: "Harmony Lodge No. 7"
+        local_number: "7"
+        local_location: "Alpha City, AC"
+        member_type: "Master Mason"
+        local_status: "Active"
+        is_active: true
+        level: "Primary"
+        date: "2010-06-20"
+
+  - member_number: "ALPHA-003"
+    first_name: "Michael"
+    last_name: "Williams"
+    birthdate: "1965-11-30"
+    status: "Suspended NPD"
+    is_active: false
+    good_standing: false
+    years_in_good_standing: 0
+    email: "michael.williams@example.com"
+    phone: "+1-555-1003"
+    affiliations:
+      - local_name: "Unity Lodge No. 1"
+        local_number: "1"
+        member_type: "Master Mason"
+        local_status: "Suspended NPD"
+        is_active: false
+
+  - member_number: "ALPHA-004"
+    first_name: "David"
+    last_name: "Brown"
+    birthdate: "1970-04-18"
+    status: "Active"
+    is_active: true
+    good_standing: true
+    years_in_good_standing: 25
+    honorific: "RW"
+    rank: "PM"
+    email: "david.brown@example.com"
+    phone: "+1-555-1004"
+    affiliations:
+      - local_name: "Wisdom Lodge No. 12"
+        local_number: "12"
+        member_type: "Master Mason"
+        local_status: "Active"
+        is_active: true
+        level: "Primary"

@@ -1,0 +1,84 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+<div class="grid-2">
+    <div>
+        <div class="card">
+            <div class="card-header">
+                <h2>Node Identity</h2>
+                <form action="{{ path('reset') }}" method="post" style="display: inline;">
+                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Reset node? This will clear all data.')">Reset Node</button>
+                </form>
+            </div>
+            <div class="card-body">
+                <dl>
+                    <dt>Organization</dt>
+                    <dd>{{ identity.organizationName }}</dd>
+
+                    <dt>MIP Identifier</dt>
+                    <dd class="monospace">{{ identity.mipIdentifier }}</dd>
+
+                    <dt>MIP URL</dt>
+                    <dd class="monospace">{{ identity.mipUrl }}</dd>
+
+                    <dt>Public Key Fingerprint</dt>
+                    <dd class="monospace">{{ identity.publicKeyFingerprint }}</dd>
+
+                    <dt>Contact</dt>
+                    <dd>{{ identity.contactPerson }} ({{ identity.contactPhone }})</dd>
+
+                    <dt>Trust Threshold</dt>
+                    <dd>{{ identity.trustThreshold }} endorsement(s) for auto-approval</dd>
+                </dl>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2>Connection Summary</h2>
+            </div>
+            <div class="card-body">
+                <div class="stat-grid">
+                    <div class="stat active">
+                        <span class="number">{{ store.activeConnections|length }}</span>
+                        <span class="label">Active</span>
+                    </div>
+                    <div class="stat pending">
+                        <span class="number">{{ store.pendingConnections|length }}</span>
+                        <span class="label">Pending</span>
+                    </div>
+                    <div class="stat revoked">
+                        <span class="number">{{ store.allConnections|filter(c => c.isRevoked)|length }}</span>
+                        <span class="label">Revoked</span>
+                    </div>
+                    <div class="stat members">
+                        <span class="number">{{ store.allMembers|length }}</span>
+                        <span class="label">Members</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Recent Activity</h2>
+        </div>
+        <div class="card-body">
+            {% set activity = store.recentActivity(15) %}
+            {% if activity is empty %}
+                <p class="empty">No recent activity</p>
+            {% else %}
+                <ul class="activity-log">
+                    {% for entry in activity %}
+                        <li>
+                            <span class="timestamp">{{ entry.timestamp|slice(0, 16)|replace({'T': ' '}) }}</span>
+                            <span class="message">{{ entry.message }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

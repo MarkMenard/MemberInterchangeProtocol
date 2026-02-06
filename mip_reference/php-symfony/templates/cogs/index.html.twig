@@ -1,0 +1,120 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+<div class="card">
+    <div class="card-header">
+        <h2>Request Certificate of Good Standing</h2>
+    </div>
+    <div class="card-body">
+        {% if activeConnections is empty %}
+            <p class="empty">No active connections available</p>
+        {% else %}
+            <form action="{{ path('cogs_new') }}" method="post">
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="target_mip_id">Request From Organization</label>
+                        <select name="target_mip_id" id="target_mip_id" required>
+                            <option value="">Select organization...</option>
+                            {% for conn in activeConnections %}
+                                <option value="{{ conn.mipIdentifier }}">{{ conn.organizationName }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="requested_member_number">Member Number (at target org)</label>
+                        <input type="text" name="requested_member_number" id="requested_member_number" required placeholder="e.g., ALPHA-001">
+                    </div>
+                </div>
+                <h4 style="margin: 1rem 0 0.5rem">Requesting Member (at our org)</h4>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="requesting_member_number">Member Number</label>
+                        <input type="text" name="requesting_member_number" id="requesting_member_number">
+                    </div>
+                    <div class="form-group">
+                        <label for="requesting_first_name">First Name</label>
+                        <input type="text" name="requesting_first_name" id="requesting_first_name">
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="requesting_last_name">Last Name</label>
+                        <input type="text" name="requesting_last_name" id="requesting_last_name">
+                    </div>
+                    <div class="form-group">
+                        <label for="notes">Notes</label>
+                        <input type="text" name="notes" id="notes">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Request COGS</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>COGS Requests</h2>
+    </div>
+    <div class="card-body">
+        {% if cogsRequests is empty %}
+            <p class="empty">No COGS requests</p>
+        {% else %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Direction</th>
+                        <th>Organization</th>
+                        <th>Member #</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cogs in cogsRequests %}
+                        <tr>
+                            <td><span class="badge {{ cogs.direction }}">{{ cogs.direction }}</span></td>
+                            <td>{{ cogs.targetOrg }}</td>
+                            <td><code class="monospace">{{ cogs.requestedMemberNumber }}</code></td>
+                            <td><span class="badge {{ cogs.status|lower }}">{{ cogs.status }}</span></td>
+                            <td>
+                                {% if cogs.isPending and cogs.isInbound %}
+                                    <form action="{{ path('cogs_approve', {id: cogs.sharedIdentifier}) }}" method="post" style="display: inline;">
+                                        <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                                    </form>
+                                    <form action="{{ path('cogs_decline', {id: cogs.sharedIdentifier}) }}" method="post" style="display: inline;">
+                                        <button type="submit" class="btn btn-danger btn-sm">Decline</button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% if cogs.isApproved and cogs.certificate %}
+                            <tr>
+                                <td colspan="5" style="background: var(--gray-50)">
+                                    <strong>Certificate of Good Standing</strong>
+                                    {% set cert = cogs.certificate %}
+                                    <ul style="margin: 0.5rem 0; padding-left: 2rem;">
+                                        <li>Good Standing: <strong>{{ cert.good_standing ? 'Yes' : 'No' }}</strong></li>
+                                        <li>Issued: {{ cert.issued_at|slice(0, 10) }}</li>
+                                        <li>Valid Until: {{ cert.valid_until|slice(0, 10) }}</li>
+                                        {% if cert.member_profile %}
+                                            <li>Member: {{ cert.member_profile.first_name }} {{ cert.member_profile.last_name }} ({{ cert.member_profile.member_number }})</li>
+                                            <li>Status: {{ cert.member_profile.group_status.status }}</li>
+                                        {% endif %}
+                                    </ul>
+                                </td>
+                            </tr>
+                        {% elseif cogs.isDeclined %}
+                            <tr>
+                                <td colspan="5" style="background: #fee2e2">
+                                    <strong>Declined:</strong> {{ cogs.declineReason }}
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

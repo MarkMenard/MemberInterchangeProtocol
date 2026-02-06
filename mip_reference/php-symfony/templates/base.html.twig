@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ identity.organizationName }} - MIP Dashboard</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-dark: #1d4ed8;
+            --success: #16a34a;
+            --warning: #ca8a04;
+            --danger: #dc2626;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-500: #6b7280;
+            --gray-700: #374151;
+            --gray-900: #111827;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--gray-100);
+            color: var(--gray-900);
+            line-height: 1.6;
+        }
+
+        header {
+            background: white;
+            border-bottom: 1px solid var(--gray-200);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            color: var(--primary);
+        }
+
+        nav {
+            display: flex;
+            gap: 1rem;
+        }
+
+        nav a {
+            text-decoration: none;
+            color: var(--gray-700);
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            transition: background 0.2s;
+        }
+
+        nav a:hover, nav a.active {
+            background: var(--gray-100);
+            color: var(--primary);
+        }
+
+        main {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .flash {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .flash.success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #86efac;
+        }
+
+        .flash.error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fca5a5;
+        }
+
+        .card {
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h2 {
+            font-size: 1.25rem;
+        }
+
+        .card-body {
+            padding: 1.5rem;
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+
+        .stat {
+            text-align: center;
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            background: var(--gray-50);
+        }
+
+        .stat .number {
+            display: block;
+            font-size: 2rem;
+            font-weight: bold;
+        }
+
+        .stat.active .number { color: var(--success); }
+        .stat.pending .number { color: var(--warning); }
+        .stat.revoked .number { color: var(--danger); }
+        .stat.members .number { color: var(--primary); }
+
+        dl {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 0.5rem 1rem;
+        }
+
+        dt {
+            font-weight: 600;
+            color: var(--gray-500);
+        }
+
+        dd {
+            color: var(--gray-900);
+        }
+
+        .monospace {
+            font-family: 'SF Mono', Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+            font-size: 0.875rem;
+            background: var(--gray-100);
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            word-break: break-all;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--gray-200);
+        }
+
+        th {
+            background: var(--gray-50);
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .badge.active { background: #dcfce7; color: #166534; }
+        .badge.pending { background: #fef3c7; color: #92400e; }
+        .badge.declined { background: #fee2e2; color: #991b1b; }
+        .badge.revoked { background: #fee2e2; color: #991b1b; }
+        .badge.approved { background: #dcfce7; color: #166534; }
+        .badge.inbound { background: #dbeafe; color: #1e40af; }
+        .badge.outbound { background: #f3e8ff; color: #6b21a8; }
+
+        .btn {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.375rem;
+            font-size: 1rem;
+        }
+
+        .form-inline {
+            display: flex;
+            gap: 0.5rem;
+            align-items: flex-end;
+        }
+
+        .form-inline .form-group {
+            flex: 1;
+            margin-bottom: 0;
+        }
+
+        .activity-log {
+            list-style: none;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .activity-log li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--gray-200);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .activity-log .timestamp {
+            color: var(--gray-500);
+            font-size: 0.875rem;
+            white-space: nowrap;
+        }
+
+        .empty {
+            color: var(--gray-500);
+            font-style: italic;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            color: var(--gray-500);
+            font-size: 0.875rem;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .grid-2 {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>{{ identity.organizationName }}</h1>
+        <nav>
+            <a href="{{ path('dashboard') }}" class="{{ app.request.attributes.get('_route') == 'dashboard' ? 'active' : '' }}">Dashboard</a>
+            <a href="{{ path('connections') }}" class="{{ app.request.attributes.get('_route') starts with 'connection' ? 'active' : '' }}">Connections</a>
+            <a href="{{ path('members') }}" class="{{ app.request.attributes.get('_route') starts with 'member' ? 'active' : '' }}">Members</a>
+            <a href="{{ path('searches') }}" class="{{ app.request.attributes.get('_route') starts with 'search' ? 'active' : '' }}">Searches</a>
+            <a href="{{ path('cogs') }}" class="{{ app.request.attributes.get('_route') starts with 'cogs' ? 'active' : '' }}">COGS</a>
+        </nav>
+    </header>
+
+    <main>
+        {% for message in app.flashes('success') %}
+            <div class="flash success">{{ message }}</div>
+        {% endfor %}
+        {% for message in app.flashes('error') %}
+            <div class="flash error">{{ message }}</div>
+        {% endfor %}
+
+        {% block body %}{% endblock %}
+    </main>
+
+    <footer>
+        <p>MIP Symfony Reference Implementation v1.0</p>
+    </footer>
+</body>
+</html>

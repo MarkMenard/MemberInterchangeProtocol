@@ -1,0 +1,53 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+<div class="card">
+    <div class="card-header">
+        <h2>Members</h2>
+    </div>
+    <div class="card-body">
+        {% if members is empty %}
+            <p class="empty">No members loaded</p>
+        {% else %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Member #</th>
+                        <th>Name</th>
+                        <th>Birthdate</th>
+                        <th>Status</th>
+                        <th>Good Standing</th>
+                        <th>Affiliations</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for member in members %}
+                        <tr>
+                            <td><code class="monospace">{{ member.memberNumber }}</code></td>
+                            <td>
+                                {% if member.honorific %}{{ member.honorific }} {% endif %}
+                                {{ member.fullName }}
+                                {% if member.rank %}<small style="color: var(--gray-500)">({{ member.rank }})</small>{% endif %}
+                            </td>
+                            <td>{{ member.birthdate }}</td>
+                            <td><span class="badge {{ member.isActive ? 'active' : 'revoked' }}">{{ member.status }}</span></td>
+                            <td>
+                                {% if member.goodStanding %}
+                                    <span style="color: var(--success)">Yes</span>
+                                {% else %}
+                                    <span style="color: var(--danger)">No</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% for aff in member.affiliations %}
+                                    <small>{{ aff.local_name }}</small>{% if not loop.last %}, {% endif %}
+                                {% endfor %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

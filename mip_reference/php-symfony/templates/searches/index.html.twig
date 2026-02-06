@@ -1,0 +1,124 @@
+{% extends 'base.html.twig' %}
+
+{% block body %}
+<div class="card">
+    <div class="card-header">
+        <h2>New Search</h2>
+    </div>
+    <div class="card-body">
+        {% if activeConnections is empty %}
+            <p class="empty">No active connections available for searching</p>
+        {% else %}
+            <form action="{{ path('search_new') }}" method="post">
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="target_mip_id">Search In Organization</label>
+                        <select name="target_mip_id" id="target_mip_id" required>
+                            <option value="">Select organization...</option>
+                            {% for conn in activeConnections %}
+                                <option value="{{ conn.mipIdentifier }}">{{ conn.organizationName }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="member_number">Member Number</label>
+                        <input type="text" name="member_number" id="member_number" placeholder="e.g., ALPHA-001">
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="first_name">First Name</label>
+                        <input type="text" name="first_name" id="first_name">
+                    </div>
+                    <div class="form-group">
+                        <label for="last_name">Last Name</label>
+                        <input type="text" name="last_name" id="last_name">
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label for="birthdate">Birthdate</label>
+                        <input type="date" name="birthdate" id="birthdate">
+                    </div>
+                    <div class="form-group">
+                        <label for="notes">Notes</label>
+                        <input type="text" name="notes" id="notes">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Send Search Request</button>
+            </form>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Search Requests</h2>
+    </div>
+    <div class="card-body">
+        {% if searches is empty %}
+            <p class="empty">No search requests</p>
+        {% else %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Direction</th>
+                        <th>Organization</th>
+                        <th>Search</th>
+                        <th>Status</th>
+                        <th>Results</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for search in searches %}
+                        <tr>
+                            <td><span class="badge {{ search.direction }}">{{ search.direction }}</span></td>
+                            <td>{{ search.targetOrg }}</td>
+                            <td>{{ search.searchDescription }}</td>
+                            <td><span class="badge {{ search.status|lower }}">{{ search.status }}</span></td>
+                            <td>
+                                {% if search.isApproved %}
+                                    {{ search.matches|length }} match(es)
+                                {% elseif search.isDeclined %}
+                                    <small style="color: var(--danger)">{{ search.declineReason }}</small>
+                                {% else %}
+                                    -
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if search.isPending and search.isInbound %}
+                                    <form action="{{ path('search_approve', {id: search.sharedIdentifier}) }}" method="post" style="display: inline;">
+                                        <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                                    </form>
+                                    <form action="{{ path('search_decline', {id: search.sharedIdentifier}) }}" method="post" style="display: inline;">
+                                        <button type="submit" class="btn btn-danger btn-sm">Decline</button>
+                                    </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% if search.isApproved and search.matches|length > 0 %}
+                            <tr>
+                                <td colspan="6" style="background: var(--gray-50)">
+                                    <strong>Matches:</strong>
+                                    <ul style="margin: 0.5rem 0; padding-left: 2rem;">
+                                        {% for match in search.matches %}
+                                            <li>
+                                                {{ match.first_name }} {{ match.last_name }}
+                                                ({{ match.member_number }}) -
+                                                <span class="badge {{ match.group_status.is_active ? 'active' : 'revoked' }}">
+                                                    {{ match.group_status.status }}
+                                                </span>
+                                            </li>
+                                        {% endfor %}
+                                    </ul>
+                                </td>
+                            </tr>
+                        {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
