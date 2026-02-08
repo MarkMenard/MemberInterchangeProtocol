@@ -9,10 +9,10 @@
 ### Connection Protocol
 
 - MIP Connection Request: Request a connection between two organizations that implement MIP.
-- MIP Connection Approve: Notify an organization that has requested a connection that their request has been approved.
-- MIP Connection Decline: Notify an organization that has requested a connection that their request has been declined.
-- MIP Connection Revoke: Notify an organization that their connection has been revoked and no more requests will be honored.
-- MIP Connection Restore: Notify an organization that their connection has been restored and requests will be honored.
+- MIP Connection Approvde: Notify an organization that has requested a connection that their request has been approved.
+- MIP Connection Declined: Notify an organization that has requested a connection that their request has been declined.
+- MIP Connection Revoked: Notify an organization that their connection has been revoked and no more requests will be honored.
+- MIP Connection Restored: Notify an organization that their connection has been restored and requests will be honored.
 - Organization Update: Push updated organization information to a connected organization and request their updated information. (This could be used if an organization changes URLs to notify their connected organizations of that change.)
 - New Organization Notification: Notify connected organizations that a new organization has joined the ecosystem.
 - Connected Organizations Query: Request a list of organizations that a connected organization knows about and has permission to share.
@@ -249,13 +249,18 @@ End point to notify a requester that their MIP Connection has been approved.
 {
   "node_profile": { 'foo': 'bar' },
   "share_my_organization": true,
-  "daily_rate_limit": 100
+  "daily_rate_limit": 100,
+  "known_organizations": [
+    { ... },
+    { ... }
+  ]
 }
 ```
 
 - **node_profile**: The approving organization's information. See [Node Profile](#node-profile) in Common Data Formats.
 - **share_my_organization**: Boolean indicating if this organization's info can be shared with other connected nodes.
 - **daily_rate_limit**: Maximum number of requests allowed per day from this connection.
+- **known_organizations**: Array of organizations the approving node knows about and has permission to share. Each element follows the [Node Profile](#node-profile) format. Only includes organizations that have set `share_my_organization` to `true`. This allows the newly approved node to immediately discover and begin connecting to other nodes in the network without requiring a separate Connected Organizations Query.
 
 #### Response Payload:
 
@@ -323,9 +328,9 @@ If a request to handshake is declined by an organization their system should sen
 
 Note declining a request does not preclude the requesting system from requesting a connection again. For user convenience a system could provide a means for auto-declining repeated requests from the same organization.
 
-### MIP Connection Revoke
+### MIP Connection Revoked
 
-#### Endpoint: /mip/node/<receiving_mip_id>/mip_connections/revoke
+#### Endpoint: /mip/node/<receiving_mip_id>/mip_connections/revoked
 
 #### Arguments:
 
@@ -369,9 +374,9 @@ This end point is used to ask another node to cease sending requests. An impleme
 
 The receiving system should mark the node revoked and not send requests to it.
 
-### MIP Connection Restore
+### MIP Connection Restored
 
-#### Endpoint: /mip/node/<receiving_mip_id>/mip_connections/restore
+#### Endpoint: /mip/node/<receiving_mip_id>/mip_connections/restored
 
 #### Arguments:
 
