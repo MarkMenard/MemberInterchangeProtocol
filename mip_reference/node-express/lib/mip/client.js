@@ -32,11 +32,18 @@ class Client {
   }
 
   // Notify a node their connection request was approved
-  async approveConnection(targetUrl, nodeProfile, dailyRateLimit = 100) {
+  async approveConnection(targetUrl, nodeProfile, dailyRateLimit = 100, knownOrganizations = []) {
+    const profile = nodeProfile || {};
     const payload = {
-      node_profile: nodeProfile,
+      mip_identifier: this.identity.mipIdentifier,
+      organization_legal_name: profile.organization_legal_name || this.identity.organizationName,
+      contact_person: profile.contact_person || this.identity.contactPerson,
+      contact_phone: profile.contact_phone || this.identity.contactPhone,
+      mip_url: profile.mip_url || this.identity.mipUrl,
+      public_key: profile.public_key || this.identity.publicKey,
       share_my_organization: this.identity.shareMyOrganization,
-      daily_rate_limit: dailyRateLimit
+      daily_rate_limit: dailyRateLimit,
+      known_organizations: knownOrganizations
     };
 
     return this._postRequest(
@@ -122,9 +129,14 @@ class Client {
 
   // Send COGS reply back to requester
   async cogsReply(targetUrl, cogsRequest) {
+    const payload = {
+      meta: { succeeded: true },
+      data: cogsRequest.toReplyPayload()
+    };
+
     return this._postRequest(
       this._buildUrl(targetUrl, '/certificates_of_good_standing/reply'),
-      cogsRequest.toReplyPayload()
+      payload
     );
   }
 

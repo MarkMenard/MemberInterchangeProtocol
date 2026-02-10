@@ -164,19 +164,16 @@ appRoutes.post('/connections', async (req, res) => {
     const result = await client.requestConnection(targetUrl, endorsements);
 
     if (result.success && result.body.meta && result.body.meta.succeeded) {
-      const responseData = result.body.data.mip_connection;
+      const responseData = (result.body.data && result.body.data.mip_connection) || {};
       const nodeProfile = responseData.node_profile || {};
 
-      // Extract MIP ID from target URL
-      const targetMipId = targetUrl.split('/').pop();
-
       const connection = new MIP.models.Connection({
-        mipIdentifier: nodeProfile.mip_identifier || targetMipId,
-        mipUrl: targetUrl,
-        publicKey: nodeProfile.public_key,
-        organizationName: nodeProfile.organization_legal_name || 'Unknown',
-        contactPerson: nodeProfile.contact_person,
-        contactPhone: nodeProfile.contact_phone,
+        mipIdentifier: responseData.mip_identifier || nodeProfile.mip_identifier,
+        mipUrl: responseData.mip_url || nodeProfile.mip_url || targetUrl,
+        publicKey: responseData.public_key || nodeProfile.public_key,
+        organizationName: responseData.organization_legal_name || nodeProfile.organization_legal_name || 'Unknown',
+        contactPerson: responseData.contact_person || nodeProfile.contact_person,
+        contactPhone: responseData.contact_phone || nodeProfile.contact_phone,
         status: responseData.status,
         direction: 'outbound',
         dailyRateLimit: responseData.daily_rate_limit
@@ -498,9 +495,14 @@ mipRouter.post('/node/:mipId/mip_connections', (req, res) => {
   if (existing) {
     return res.json(mipResponse(true, {
       mip_connection: {
+        mip_identifier: s.nodeIdentity.mipIdentifier,
+        organization_legal_name: s.nodeIdentity.organizationName,
+        contact_person: s.nodeIdentity.contactPerson,
+        contact_phone: s.nodeIdentity.contactPhone,
+        mip_url: s.nodeIdentity.mipUrl,
+        public_key: s.nodeIdentity.publicKey,
         status: existing.status,
-        daily_rate_limit: existing.dailyRateLimit,
-        node_profile: s.nodeIdentity.toNodeProfile()
+        daily_rate_limit: existing.dailyRateLimit
       }
     }));
   }
@@ -522,9 +524,14 @@ mipRouter.post('/node/:mipId/mip_connections', (req, res) => {
 
     res.json(mipResponse(true, {
       mip_connection: {
+        mip_identifier: s.nodeIdentity.mipIdentifier,
+        organization_legal_name: s.nodeIdentity.organizationName,
+        contact_person: s.nodeIdentity.contactPerson,
+        contact_phone: s.nodeIdentity.contactPhone,
+        mip_url: s.nodeIdentity.mipUrl,
+        public_key: s.nodeIdentity.publicKey,
         status: 'ACTIVE',
-        daily_rate_limit: 100,
-        node_profile: s.nodeIdentity.toNodeProfile()
+        daily_rate_limit: 100
       }
     }));
   } else {
@@ -533,9 +540,14 @@ mipRouter.post('/node/:mipId/mip_connections', (req, res) => {
 
     res.json(mipResponse(true, {
       mip_connection: {
+        mip_identifier: s.nodeIdentity.mipIdentifier,
+        organization_legal_name: s.nodeIdentity.organizationName,
+        contact_person: s.nodeIdentity.contactPerson,
+        contact_phone: s.nodeIdentity.contactPhone,
+        mip_url: s.nodeIdentity.mipUrl,
+        public_key: s.nodeIdentity.publicKey,
         status: 'PENDING',
-        daily_rate_limit: 100,
-        node_profile: s.nodeIdentity.toNodeProfile()
+        daily_rate_limit: 100
       }
     }));
   }
@@ -550,7 +562,14 @@ mipRouter.post('/node/:mipId/mip_connections/approved', (req, res) => {
   const connection = s.findConnection(sender.mipId);
   if (!connection) return res.status(404).json(mipResponse(false, { error: 'Connection not found' }));
 
-  const nodeProfile = req.body.node_profile;
+  const railsStyleProfile = {
+    organization_legal_name: req.body.organization_legal_name,
+    contact_person: req.body.contact_person,
+    contact_phone: req.body.contact_phone,
+    mip_url: req.body.mip_url,
+    public_key: req.body.public_key
+  };
+  const nodeProfile = req.body.node_profile || railsStyleProfile;
   connection.approve({
     nodeProfile,
     dailyRateLimit: req.body.daily_rate_limit || 100
@@ -753,19 +772,21 @@ mipRouter.post('/node/:mipId/certificates_of_good_standing/reply', (req, res) =>
   }
 
   const s = store.current();
-  const sharedId = req.body.shared_identifier;
+  const payload = req.body && req.body.data ? req.body.data : req.body;
+  const sharedId = payload && payload.shared_identifier;
   const cogs = s.findCogsRequest(sharedId);
 
   if (cogs) {
-    if (req.body.status === 'APPROVED') {
+    if (payload.status === 'APPROVED') {
       cogs.status = 'APPROVED';
-      cogs.certificate = req.body;
-      const memberNum = req.body.member_profile && req.body.member_profile.member_number;
+      cogs.certificate = payload.certificate || payload;
+      const certificate = payload.certificate || {};
+      const memberNum = certificate.member_profile && certificate.member_profile.member_number;
       s.logActivity(`COGS received for ${memberNum || 'unknown'}`);
     } else {
       cogs.status = 'DECLINED';
-      cogs.declineReason = req.body.reason;
-      s.logActivity(`COGS declined: ${req.body.reason}`);
+      cogs.declineReason = payload.reason;
+      s.logActivity(`COGS declined: ${payload.reason}`);
     }
   }
 

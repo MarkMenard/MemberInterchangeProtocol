@@ -10,6 +10,9 @@ class CogsRequest {
     this.targetOrg = attrs.targetOrg;
     this.requestingMember = attrs.requestingMember || {};
     this.requestedMemberNumber = attrs.requestedMemberNumber;
+    this.requestedFirstName = attrs.requestedFirstName || null;
+    this.requestedLastName = attrs.requestedLastName || null;
+    this.requestedBirthdate = attrs.requestedBirthdate || null;
     this.notes = attrs.notes || null;
     this.status = attrs.status || 'PENDING';
     this.certificate = attrs.certificate || null;
@@ -50,9 +53,16 @@ class CogsRequest {
   toRequestPayload() {
     const payload = {
       shared_identifier: this.sharedIdentifier,
-      requesting_member: this.requestingMember,
-      requested_member_number: this.requestedMemberNumber
+      member_number: this.requestedMemberNumber
     };
+    if (this.requestedFirstName) payload.first_name = this.requestedFirstName;
+    if (this.requestedLastName) payload.last_name = this.requestedLastName;
+    if (this.requestedBirthdate) payload.birthdate = this.requestedBirthdate;
+    // Backward-compatible fields for older implementations.
+    if (this.requestingMember && Object.keys(this.requestingMember).length > 0) {
+      payload.requesting_member = this.requestingMember;
+    }
+    payload.requested_member_number = this.requestedMemberNumber;
     if (this.notes) payload.notes = this.notes;
     return payload;
   }
@@ -71,8 +81,11 @@ class CogsRequest {
       direction: 'inbound',
       targetMipIdentifier: senderMipId,
       targetOrg: senderOrg,
-      requestingMember: payload.requesting_member || {},
-      requestedMemberNumber: payload.requested_member_number,
+      requestingMember: payload.requesting_member_profile || payload.requesting_member || {},
+      requestedMemberNumber: payload.member_number || payload.requested_member_number,
+      requestedFirstName: payload.first_name || null,
+      requestedLastName: payload.last_name || null,
+      requestedBirthdate: payload.birthdate || null,
       notes: payload.notes
     });
   }
