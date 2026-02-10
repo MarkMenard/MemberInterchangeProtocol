@@ -250,6 +250,7 @@ End point to notify a requester that their MIP Connection has been approved.
   "node_profile": { 'foo': 'bar' },
   "share_my_organization": true,
   "daily_rate_limit": 100,
+  "endorsement": { endorsement document (see below)},
   "known_organizations": [
     { ... },
     { ... }
