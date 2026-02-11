@@ -201,3 +201,7 @@ There are many potential functions that could be added to MIP such as:
 - Automatic display of linked member status in member profiles
 
 An important differentiator of using MIP over having a centralized clearing house is there would be no need for a third-party to store the connections between members in discrete member databases. All of those connections would ONLY be housed with the organizations the member belongs to. No need to trust a third-party with your data in any way at all.
+
+# Sponsors
+
+This project is sponsored by [Groupable](https://www.groupable.com/).
