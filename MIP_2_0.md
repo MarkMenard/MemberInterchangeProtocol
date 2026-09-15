@@ -1118,11 +1118,18 @@ None. The receiving node is identified by its `mip_url`.
   search on both nodes. The reply carries it back.
 - **notes**: OPTIONAL. Context for the person handling the search.
 
-A request MUST contain at least one of: `member_number` on its own, or `first_name` and
-`last_name` together. A request that meets neither minimum is answered `422`
+A request MUST contain `member_number`, or both `first_name` and `last_name`, and MAY
+contain all three. A request that meets neither minimum is answered `422`
 `validation_failed` naming the missing field. A request without `shared_identifier` is
 answered `400` `shared_identifier_missing`. Fields the requester did not fill in are omitted,
 not sent as `null`.
+
+How the responder matches the fields it receives against its members is the responder's own
+business and is not specified here. As a best practice, when a request carries both a member
+number and a name the responder SHOULD match on either rather than require both to agree: a
+member number is often copied by hand and a name is often spelled differently in the two
+systems, and a search that finds the member on whichever is right is more useful than one
+that fails because one of them is wrong.
 
 #### Response Payload
 
@@ -1345,9 +1352,10 @@ None. The receiving node is identified by its `mip_url`.
 
 The fields describe the person as the responding organization knows them, since the person
 often has no record yet in the requesting organization. The same minimum applies as for a
-Member Search Request: `member_number` on its own, or `first_name` and `last_name` together;
-otherwise `422` `validation_failed`. A request without `shared_identifier` is answered `400`
-`shared_identifier_missing`. Unfilled fields are omitted.
+Member Search Request: `member_number`, or both `first_name` and `last_name`, and MAY
+contain all three; otherwise `422` `validation_failed`. A request without `shared_identifier`
+is answered `400` `shared_identifier_missing`. Unfilled fields are omitted. The same
+guidance on matching applies as for a Member Search Request.
 
 #### Response Payload
 
