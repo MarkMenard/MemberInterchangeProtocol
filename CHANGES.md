@@ -182,34 +182,64 @@ approver's `gdpr_metadata`.
 **Why.** The list of known nodes needed a size limit, endorsements per node, and a way to
 send more later, none of which fit inside an approval. Shared Nodes does all three, and a
 node that receives its known nodes that way after an approval gets the same discovery it
-had before. `authentication_type` makes the requester's record truthful: a connection
-approved by endorsement was being recorded as manual. The endorsement rule follows from the
-issuance rules below.
+had before. `authentication_type` is new because 1.0 did not distinguish how a connection
+was approved; 2.0 makes that distinction explicit in the protocol so both sides share a
+common record. The endorsement rule follows from the issuance rules below.
 
 **What to change.** Stop reading `known_organizations` from the approved payload; expect a
 Shared Nodes push instead. Send and record `authentication_type`. Send `endorsement` only
 on a manual approval.
 
+### Notification delivery (additive)
+
+**What changed.** 2.0 adds a Notification Delivery section covering Connection Approved,
+Declined, Revoked, and Restored. Each names a source state and a target state. A record in
+the source state moves to the target state; a record already in the target state is
+answered `200` with its status and nothing changes; a record in neither state is answered
+`409` `connection_state_invalid`. A sender changes its own record before sending, keeps
+retrying after a `5xx`, a `429`, or no response, stops on any other `4xx`, and shows a
+`409` to a person rather than changing its own record. A node does not send Restored while
+its Revoked is still undelivered. Connection Revoked joins the endpoints exempt from the
+active-connection check in the order of checks, so that a retried revocation reaches its
+idempotent answer instead of `403` `connection_not_active`.
+
+**Why.** Every one of these notifications is sent after the sender's record has already
+changed, so a lost request or a lost response leaves the two nodes with different records.
+A strict "must be `PENDING`" rule, which an earlier draft of 2.0 had, turned that into a
+deadlock: if an approval was lost, the approver's record was `ACTIVE` and the requester's
+`PENDING`, and no notification either side could send was valid at the other. A retry that
+finds the record already in the target state is the normal way delivery completes, and the
+rules make it succeed for all four notifications and both directions of loss.
+
+**What to change.** Answer `200` rather than an error when a notification finds the
+record already in its target state. Retry undelivered notifications.
+
 ### Connection Declined (clarification)
 
-**What changed.** The payload is unchanged: `{mip_identifier, reason?}`. 2.0 adds that the
-receiver's record must be `PENDING`, otherwise `409` `connection_state_invalid`, and that the
-response carries `status` only.
+**What changed.** The payload is unchanged: `{mip_identifier, reason?}`. 2.0 states the
+states: from `PENDING` to `DECLINED`, idempotent on `DECLINED`, otherwise `409`
+`connection_state_invalid`; and that the response carries `status` only.
 
 **Why.** The state rule was implied and is now stated so that every implementation answers
 the same way.
 
 ### Connection Revoked and Restored (clarification)
 
-**What changed.** Both endpoints keep 1.0's payloads and responses. 2.0 adds the state rules:
-revoke is valid only from `ACTIVE` and restore only from `REVOKED`, otherwise `409`
-`connection_state_invalid`; the receiver keeps a revoked record rather than deleting it; and
+**What changed.** Both endpoints keep 1.0's payloads and responses. 2.0 adds the state
+rules: Revoked moves `ACTIVE` to `REVOKED` and Restored moves `REVOKED` to `ACTIVE`, each
+idempotent on its target state and otherwise `409` `connection_state_invalid`. The receiver
+keeps a revoked record rather than deleting it, and records which node revoked it; Restored
+is accepted only from that node. A revocation is never applied to a `PENDING` record.
 Restored is exempt from the active-connection check, since the sender's connection is
 `REVOKED` by definition when it arrives.
 
 **Why.** 1.0 let the receiver delete the record on revocation, which made a later restore
 impossible and let a repeated connection request from the revoked node start fresh. Keeping
-the record makes both work.
+the record makes both work. 1.0 also said only the revoking node may restore, but gave the
+receiver no way to know which node that was; recording it makes the rule enforceable.
+Revoking from `PENDING` was considered as a way out of the lost-approval deadlock and
+rejected: a later restore would make the requester `ACTIVE` without the approval payload
+behind it, and it would let a node skip from `PENDING` to `REVOKED` without ever approving.
 
 ### Organization Update request (clarification)
 
