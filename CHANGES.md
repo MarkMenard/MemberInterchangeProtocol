@@ -129,7 +129,8 @@ early enough that adding the field now costs little.
 
 **What changed.** `data.mip_connection` keeps 1.0's `status`, `daily_rate_limit`, and
 `node_profile`, and adds `authentication_type` (`null` while pending, `ENDORSEMENT` when
-approved on the spot). The responder's `node_profile` carries its `gdpr_metadata`. The
+approved on the spot). `status` gains a fifth value, `REOPENED`; see Repeated Connection
+Requests below. The responder's `node_profile` carries its `gdpr_metadata`. The
 `daily_rate_limit` is the limit the responder applies, not a placeholder. The response never
 carries an endorsement or a list of other nodes.
 
@@ -142,11 +143,14 @@ Shared Nodes below), and carrying them here as well duplicated them.
 **What changed.** 1.0 said only that a declined requester may request again. 2.0 makes a
 Connection Request idempotent per requesting identifier: the receiver always answers `200`
 with the connection's current status and never creates a second record. `PENDING` and
-`ACTIVE` connections are unchanged by a repeat; a `DECLINED` or `REVOKED` connection is
-reopened as `PENDING` and presented to a person, whichever node revoked it and whichever
-node made the original request. A reopened request is never approved automatically, on the
-spot or later by an endorsement: a person declined or revoked it, and only a person approves
-it again. A repeat presenting a different public key is
+`ACTIVE` connections are unchanged by a repeat; a `DECLINED` or `REVOKED` connection becomes
+`REOPENED`, a new fifth status, and is presented to a person, whichever node revoked it and
+whichever node made the original request. `REOPENED` is `PENDING` without automatic
+approval: it is never approved on the spot or later by an endorsement, because a person
+declined or revoked it and only a person approves it again, and the same notifications move
+it to `ACTIVE`, `DECLINED`, or `REVOKED`. It is a status rather than a private mark so that
+the rule travels on the wire and the requester can see a person will review. A repeat
+presenting a different public key is
 answered `422` `public_key_mismatch` and changes nothing. A node may block a node it has
 declined or revoked; a repeat from a blocked node changes nothing and is answered with the
 current status, `DECLINED` or `REVOKED`. The block is a local mark, not a status, and is

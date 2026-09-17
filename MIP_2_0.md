@@ -23,7 +23,9 @@ defines how nodes exchange information, not what an organization does with it on
 - **Node**: one organization's MIP endpoint. A vendor hosting several organizations operates
   one node per organization.
 - **Connection**: the relationship between two nodes that have exchanged identities and keys.
-  A connection has a status: `PENDING`, `ACTIVE`, `DECLINED`, or `REVOKED`.
+  A connection has a status: `PENDING`, `REOPENED`, `ACTIVE`, `DECLINED`, or `REVOKED`.
+  `REOPENED` is a request awaiting a person after an earlier decline or revocation; it is
+  `PENDING` without the possibility of automatic approval.
 - **Requester** and **responder**: the node that initiates an exchange and the node that
   answers it. The terms describe roles within one exchange; the roles swap in the next.
 - **Sender** and **receiver**: the node that makes one HTTP request and the node that
@@ -418,8 +420,9 @@ None. The receiving node is identified by its `mip_url`.
   connection's current status; see Repeated Requests.
 - **data.mip_connection.authentication_type**: `null` while the connection is `PENDING`;
   `ENDORSEMENT` when this request was approved on the spot by endorsement; when an existing
-  connection is echoed, whatever value it has: `null` while `PENDING` or `DECLINED`,
-  otherwise `MANUAL` or `ENDORSEMENT`. See [authentication_type](#connection-attributes).
+  connection is echoed, whatever value it has: `null` while `PENDING`, `REOPENED`, or
+  `DECLINED`, otherwise `MANUAL` or `ENDORSEMENT`. See
+  [authentication_type](#connection-attributes).
 - **data.mip_connection.daily_rate_limit**: the number of requests per day the receiving
   node will accept from this connection.
 - **data.mip_connection.node_profile**: the receiving node's own profile, including its
@@ -477,9 +480,9 @@ connection to its other sharing connections, as specified under [Shared Nodes](#
 When the policy is not met the connection is stored as `PENDING`, presented to a person for
 approval or decline, and the response carries `status` `PENDING`.
 
-Automatic approval applies only to a record the request being processed created. A request
-that reopens a `DECLINED` or `REVOKED` record is approved only by a person; see Repeated
-Requests.
+Automatic approval applies only to a `PENDING` record. A request that reopens a `DECLINED`
+or `REVOKED` record makes it `REOPENED`, and a `REOPENED` record is approved only by a
+person; see Repeated Requests.
 
 #### Manual Approval
 
@@ -505,20 +508,22 @@ holds a connection for the requester's `mip_identifier` it MUST answer `200` wit
 connection's current status and MUST NOT create a second record. What else happens depends on
 the status:
 
-- `PENDING` or `ACTIVE`: nothing changes.
-- `DECLINED`: the receiver reopens the same record as `PENDING`, presents it to a person,
-  and answers `PENDING`. If the receiver has blocked the requester, nothing changes and the
+- `PENDING`, `REOPENED`, or `ACTIVE`: nothing changes.
+- `DECLINED`: the receiver marks the same record `REOPENED`, presents it to a person, and
+  answers `REOPENED`. If the receiver has blocked the requester, nothing changes and the
   response reports `DECLINED`.
-- `REVOKED`: the receiver reopens the same record as `PENDING`, presents it to a person,
-  and answers `PENDING`. If the receiver has blocked the requester, nothing changes and the
+- `REVOKED`: the receiver marks the same record `REOPENED`, presents it to a person, and
+  answers `REOPENED`. If the receiver has blocked the requester, nothing changes and the
   response reports `REVOKED`.
 
-A reopened request is approved or declined only by a person. The receiver refreshes the
-stored profile and `gdpr_metadata` from it and stores the presented endorsements, but MUST
-NOT evaluate them for automatic approval, and a record reopened as `PENDING` MUST NOT be
+A `REOPENED` record is approved or declined only by a person. The receiver refreshes the
+stored profile and `gdpr_metadata` from the request and stores the presented endorsements,
+but MUST NOT evaluate them for automatic approval, and a `REOPENED` record MUST NOT be
 completed later by an endorsement either. A person declined or revoked this connection, and
-the web of trust does not overrule a person. A receiver therefore has to know that a
-`PENDING` record was reopened rather than newly created, for as long as it stays `PENDING`.
+the web of trust does not overrule a person. In every other respect `REOPENED` is
+`PENDING`: the same notifications move it on, and `authentication_type` is `null` while it
+lasts. It is a status of its own so that the rule is carried on the wire, where the
+requester can see that a person will review, rather than in a mark only the receiver knows.
 
 This is the only way a revoked connection comes back, and it works the same whichever node
 revoked it and whichever node made the original request. The requester withdraws its
@@ -679,8 +684,8 @@ None. The receiving node is identified by its `mip_url`.
 
 - **data.mip_connection.status**: `ACTIVE`.
 
-The source state is `PENDING` and the target state is `ACTIVE`; see
-[Notification Delivery](#notification-delivery). A `PENDING` record is marked `ACTIVE`, and
+The source state is `PENDING` or `REOPENED` and the target state is `ACTIVE`; see
+[Notification Delivery](#notification-delivery). Such a record is marked `ACTIVE`, and
 the receiver records `authentication_type`, `daily_rate_limit`, and `share_my_organization`,
 stores the approver's `gdpr_metadata`, and stores the endorsement, when present, as
 specified under [Endorsement](#endorsement). A record already `ACTIVE` is answered `200`
@@ -737,8 +742,8 @@ None. The receiving node is identified by its `mip_url`.
 
 - **data.mip_connection.status**: `DECLINED`.
 
-The source state is `PENDING` and the target state is `DECLINED`; see
-[Notification Delivery](#notification-delivery). A `PENDING` record is marked `DECLINED` and
+The source state is `PENDING` or `REOPENED` and the target state is `DECLINED`; see
+[Notification Delivery](#notification-delivery). Such a record is marked `DECLINED` and
 kept, so that a later request to the same node is recognized as a repeat. A record already
 `DECLINED` is answered `200` with status `DECLINED` and nothing changes. Any other state is
 answered `409` `connection_state_invalid`.
@@ -796,8 +801,8 @@ marked `REVOKED` and kept, and the receiver stops sending requests to the revoki
 record already `REVOKED` is answered `200` with status `REVOKED` and nothing changes. This
 is the one notification that is never answered `409`: it is how a node resets a connection
 whatever state the two sides have reached, and either node may send it at any stage.
-Revoking a `PENDING` record withdraws the request when the requester sends it and refuses
-it when the other node does.
+Revoking a `PENDING` or `REOPENED` record withdraws the request when the requester sends
+it and refuses it when the other node does.
 
 The record is kept because a repeated connection request from either node is answered from
 it, and that is the only way a revoked connection comes back; see Repeated Requests under
@@ -1133,9 +1138,9 @@ An endorsement arriving here can complete a pending connection. When the receive
 `PENDING` connection request from the endorsed node and the newly verified endorsement
 satisfies its automatic approval policy, the receiver MAY approve that connection and send the
 endorsed node a [Connection Approved](#connection-approved) request with `authentication_type`
-`ENDORSEMENT` and no `endorsement`. A `PENDING` record that was reopened from `DECLINED` or
-`REVOKED` is not eligible; a person declined or revoked it, and only a person approves it
-again. See Repeated Requests under [Connection Request](#connection-request).
+`ENDORSEMENT` and no `endorsement`. A `REOPENED` record is not eligible; a person declined
+or revoked it, and only a person approves it again. See Repeated Requests under
+[Connection Request](#connection-request).
 
 ## Member Protocol
 
@@ -1621,11 +1626,13 @@ about the node.
 Beside the Node Profile, the Connection Request and Organization Update responses carry three
 attributes of the connection itself, under `data.mip_connection`:
 
-- **status**: `PENDING`, `ACTIVE`, `DECLINED`, or `REVOKED`.
+- **status**: `PENDING`, `REOPENED`, `ACTIVE`, `DECLINED`, or `REVOKED`. `REOPENED` is a
+  request awaiting a person after an earlier decline or revocation; see Repeated Requests
+  under [Connection Request](#connection-request).
 - **authentication_type**: how the connection came to be approved: `MANUAL` when a person
   approved it, `ENDORSEMENT` when it was approved by the web of trust. `null` while the
-  connection is `PENDING` or `DECLINED`; a `REVOKED` connection keeps the value it had
-  before revocation, which is `null` if it was never `ACTIVE`.
+  connection is `PENDING`, `REOPENED`, or `DECLINED`; a `REVOKED` connection keeps the value
+  it had before revocation, which is `null` if it was never `ACTIVE`.
 - **daily_rate_limit**: the number of requests per day the responding node accepts from this
   connection.
 
