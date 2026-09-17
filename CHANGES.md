@@ -143,15 +143,17 @@ Shared Nodes below), and carrying them here as well duplicated them.
 Connection Request idempotent per requesting identifier: the receiver always answers `200`
 with the connection's current status and never creates a second record. `PENDING` and
 `ACTIVE` connections are unchanged by a repeat; a `DECLINED` or `REVOKED` connection is
-reopened as `PENDING` and presented for approval again, whichever node revoked it and
-whichever node made the original request. A repeat presenting a different public key is
+reopened and handled as a new request, whichever node revoked it and whichever node made
+the original request: the profile is refreshed, presented endorsements are stored and
+evaluated, and the record becomes `ACTIVE` on the spot when the receiver's policy is met or
+`PENDING` for a person otherwise. A repeat presenting a different public key is
 answered `422` `public_key_mismatch` and changes nothing. A node may block a node it has
 declined or revoked; a repeat from a blocked node changes nothing and is answered with the
 current status, `DECLINED` or `REVOKED`. The block is a local mark, not a status, and is
 never sent; a node that sends its own Connection Request to a node it has blocked should
 clear the block as part of sending. Because the answer is the receiver's current status,
-either node may send a repeat to learn what the other holds, and a requester may adopt the
-status reported.
+either node may send a repeat to learn what the other holds, and the node that sent it must
+record the status reported.
 
 **Why.** Without a rule, a repeated request either failed or created a duplicate. Reopening a
 declined connection on the same record keeps its history in one place. Reopening a revoked

@@ -429,6 +429,14 @@ The response carries no endorsement and no list of other nodes. Endorsements are
 specified under [Endorsements](#endorsements), and known nodes are pushed afterward through
 [Shared Nodes](#shared-nodes).
 
+The requester records the connection from the response: its `status`,
+`authentication_type`, and `daily_rate_limit`, and the receiver's profile and
+`gdpr_metadata`. This applies equally when the request repeats an existing connection. The
+node that sent it MUST bring its own record into line with the status reported, whatever
+that record held before, and if it had blocked the receiving node it SHOULD clear the
+block; see Repeated Requests. A node that asks for a connection has, by asking, withdrawn
+any objection of its own to it.
+
 #### Processing a Connection Request
 
 The receiver MUST check, in this order, before storing anything:
@@ -494,18 +502,28 @@ connection's current status and MUST NOT create a second record. What else happe
 the status:
 
 - `PENDING` or `ACTIVE`: nothing changes.
-- `DECLINED`: the receiver reopens the same record as `PENDING`, presents it for approval
-  again, and answers `PENDING`. If the receiver has blocked the requester, nothing changes
-  and the response reports `DECLINED`.
-- `REVOKED`: the receiver reopens the same record as `PENDING`, presents it for approval
-  again, and answers `PENDING`. If the receiver has blocked the requester, nothing changes
-  and the response reports `REVOKED`.
+- `DECLINED`: the receiver reopens the same record and handles the request as a new one. If
+  the receiver has blocked the requester, nothing changes and the response reports
+  `DECLINED`.
+- `REVOKED`: the receiver reopens the same record and handles the request as a new one. If
+  the receiver has blocked the requester, nothing changes and the response reports
+  `REVOKED`.
+
+A reopened request is a new request in every respect but the record it lands on. The
+receiver refreshes the stored profile and `gdpr_metadata` from it, stores the presented
+endorsements, and evaluates them for automatic approval exactly as under Processing a
+Connection Request: the record becomes `ACTIVE` at once when the receiver's policy is met,
+or `PENDING` and presented to a person when it is not, and the response reports whichever
+it became. A record reopened as `PENDING` can also be completed later by an endorsement, as
+any `PENDING` record can. A node that wants a decline or revocation to stand against the
+web of trust as well as against the requester blocks the node; nothing else keeps a
+reopened request from being approved without a person.
 
 This is the only way a revoked connection comes back, and it works the same whichever node
 revoked it and whichever node made the original request. The requester withdraws its
-objection by asking; the receiver withdraws its own by approving, and its approval rebuilds
-the record in full. A node that revoked a connection and wants it back sends a Connection
-Request like any other node.
+objection by asking; the receiver withdraws its own by approving, whether a person or its
+policy does so, and the approval rebuilds the record in full. A node that revoked a
+connection and wants it back sends a Connection Request like any other node.
 
 A node MAY block a node whose connection it holds as `DECLINED` or `REVOKED`. A block is a
 mark a person sets on the connection, normally when declining or revoking it, and it is
@@ -551,12 +569,12 @@ rules keep them in agreement without background retries, queues, or locks on eit
   disagreement itself rather than a bare conflict. The sender MUST NOT change its own record
   on the strength of a `409`.
 - **Either node can ask.** A Connection Request to a node that already holds the connection
-  is answered with that node's current status and changes nothing there, whichever node
-  made the original request; see Repeated Requests under
-  [Connection Request](#connection-request). A node MAY send one to learn what the other
-  side holds, and a requester MAY adopt the status it reports, since the answering node is
-  the one whose approval or refusal counts and the response carries everything an approval
-  carries.
+  is answered with that node's current status, whichever node made the original request,
+  and changes nothing there unless the record is `DECLINED` or `REVOKED` and the sender is
+  not blocked, in which case it is reopened; see Repeated Requests under
+  [Connection Request](#connection-request). A node sends one to learn what the other side
+  holds, and MUST record the status reported, since the answering node is the one whose
+  approval or refusal counts and the response carries everything an approval carries.
 
 One retry is RECOMMENDED. When a pending request is approved by an endorsement that arrives
 later (see [Late Automatic Approval](#late-automatic-approval)), no person is at hand to
