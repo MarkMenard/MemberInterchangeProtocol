@@ -39,8 +39,8 @@ defines how nodes exchange information, not what an organization does with it on
 - **Connection Request**: request a connection between two nodes.
 - **Connection Approved**: notify a requester that its connection request has been approved.
 - **Connection Declined**: notify a requester that its connection request has been declined.
-- **Connection Revoked**: notify a connected node that the connection has been revoked and
-  no further requests will be honored.
+- **Connection Revoked**: notify a node that the sender has revoked the connection, whatever
+  its state, and will honor no further requests.
 - **Connection Restored**: notify a node that a revoked connection has been restored.
 - **Organization Update**: push updated organization information to a connected node and
   receive its current information in return.
@@ -253,7 +253,9 @@ the specific one.
 
 Errors are listed in `meta.errors`. Each error has a `code` from the catalog below and a
 `message` for a person to read. Clients MUST NOT parse `message`. An error that concerns one
-field of the request adds `field`, naming it.
+field of the request adds `field`, naming it. A `connection_state_invalid` error adds
+`status`, the receiver's current status of the connection; see
+[Notification Delivery](#notification-delivery).
 
 ```json
 {
@@ -305,9 +307,9 @@ for the first fault found.
    connection between them is `ACTIVE`. The following endpoints are exempt from the `ACTIVE`
    check because the connection is, or may be, in another state when they are called:
    Connection Request, Connection Approved, Connection Declined, Connection Revoked, and
-   Connection Restored. Connection Revoked is exempt because a retried revocation arrives at
-   a record already `REVOKED`; see [Notification Delivery](#notification-delivery). Any
-   other request from a connection that is not `ACTIVE` is answered `connection_not_active`.
+   Connection Restored. Connection Revoked is exempt because it is accepted from any state;
+   see [Connection Revoked](#connection-revoked). Any other request from a connection that
+   is not `ACTIVE` is answered `connection_not_active`.
 6. **Rate limit** (`429`): the connection is within its daily limit. A Connection Request is
    exempt.
 7. **Endpoint rules**: the checks specified under each endpoint.
@@ -504,38 +506,49 @@ identifier. A different key is answered `422` `public_key_mismatch` and changes 
 that a repeated request cannot be used to swap a key before anyone has verified it. Changing
 a node's key is outside the scope of this version of the protocol.
 
+Because the answer is the receiver's current status, a repeated request is also how a node
+learns what the other side holds after a failed or doubtful exchange; see
+[Notification Delivery](#notification-delivery). This applies whichever node made the
+original request. A repeated request to a `DECLINED` record reopens it, as above.
+
 ### Notification Delivery
 
 Connection Approved, Connection Declined, Connection Revoked, and Connection Restored each
-tell the other node that the sender's record of the connection has changed. The sender
-changes its own record first and then sends the notification. A notification can therefore
-be lost after the sender's record has changed, either because the request never arrives or
-because it arrives and the response is lost. Until it is delivered, the two nodes hold
-different records of the same connection, and any request either sends is answered
-according to the other's record.
+tell the other node that the sender has changed the connection. Each is one request with one
+answer, and the two nodes agree about the connection only once that answer has arrived. Four
+rules keep them in agreement without background retries, queues, or locks on either side.
 
-Three rules keep every such disagreement recoverable without a person's involvement.
-
-- **The sender retries.** A sender MUST retry a notification that is answered `5xx` or
-  `429`, or that gets no response, until it is answered otherwise. Any other answer is
-  final. Retries SHOULD back off and continue for at least a day. A retry is a fresh request
-  with its own timestamp and signature; it is not a replay.
+- **The sender changes its record on `200` and not before.** A node sends the notification
+  when a person takes the action, and records the new state when the receiver answers
+  `200`. A `5xx`, a `429`, or no response changes nothing on the sender; the person is told
+  the notification did not go through and may try again later. There is no automatic retry.
+  A node MUST let a person re-send any notification. A re-send is a fresh request with its
+  own timestamp and signature; it is not a replay.
 - **The receiver is idempotent.** Each notification names a source state and a target
   state. A record in the source state moves to the target state. A record already in the
-  target state is answered `200` with that status and nothing changes. Only a record in
-  neither state is answered `409` `connection_state_invalid`. The endpoint sections give the
-  two states for each notification.
-- **A `409` goes to a person.** It means the two nodes disagree about the connection in a
-  way retrying cannot repair, for example a revocation that reached a record that was never
-  approved. The sender MUST stop retrying, MUST NOT change its own record on the strength of
-  the response, and presents the disagreement to a person, who settles it with the other
-  organization outside the protocol.
+  target state is answered `200` with that status and nothing changes. A record in neither
+  state is answered `409` `connection_state_invalid`. The endpoint sections give the two
+  states for each notification.
+- **A `409` says what the receiver holds.** The `connection_state_invalid` error carries the
+  receiver's current status of the connection in `status`, so that the person sees the
+  disagreement itself rather than a bare conflict. The sender MUST NOT change its own record
+  on the strength of a `409`.
+- **Either node can ask.** A Connection Request to a node that already holds the connection
+  is answered with that node's current status and changes nothing there, whichever node
+  made the original request; see Repeated Requests under
+  [Connection Request](#connection-request). A node MAY send one to learn what the other
+  side holds, and a requester MAY adopt the status it reports, since the answering node is
+  the one whose approval or refusal counts and the response carries everything an approval
+  carries.
 
-A node that revokes a connection and later restores it MUST NOT send Connection Restored
-while its Connection Revoked is still undelivered; it delivers the revocation first, or
-abandons it and sends nothing. Otherwise the restore can arrive at an `ACTIVE` record, be
-answered `200`, and leave the earlier revocation to arrive afterward and revoke the
-connection both sides now consider active.
+These rules are enough because the only disagreement they can leave behind is a lost reply:
+the receiver changed and the sender did not. The sender's record still shows the action as
+not done, so the person takes it again, and the receiver, already in the target state,
+answers `200`. A disagreement that arises some other way, such as a record restored from a
+backup, is repaired with the same moves a person makes every day: Connection Revoked is
+accepted from any state and resets a connection, and Connection Restored rebuilds an
+`ACTIVE` record in full. No implementation needs to let anyone edit a connection's status by
+hand, and none should.
 
 ### Connection Approved
 
@@ -691,8 +704,8 @@ Declining does not prevent the requester from requesting again; see Repeated Req
 
 ### Connection Revoked
 
-Notify a connected node that the connection has been revoked and that no further requests
-will be honored.
+Notify a node that the sender has revoked the connection and will honor no further requests.
+It may be sent whatever state the connection is in.
 
 #### Endpoint: `<mip_url>/mip_connections/revoked`
 
@@ -733,20 +746,22 @@ None. The receiving node is identified by its `mip_url`.
 
 - **data.mip_connection.status**: `REVOKED`.
 
-The source state is `ACTIVE` and the target state is `REVOKED`; see
-[Notification Delivery](#notification-delivery). An `ACTIVE` record is marked `REVOKED`, the
-receiver records that the sender is the node that revoked it, keeps the record, and stops
-sending requests to the revoking node. A record already `REVOKED` is answered `200` with
-status `REVOKED` and nothing changes, including who is recorded as having revoked it. Any
-other state is answered `409` `connection_state_invalid`; in particular a revocation MUST NOT
-be applied to a `PENDING` record, which the sender declines instead.
+The target state is `REVOKED` and the source state is any other; see
+[Notification Delivery](#notification-delivery). Whatever the receiver holds, the record is
+marked `REVOKED`, the receiver records that the sender is the node that revoked it, keeps the
+record, and stops sending requests to the revoking node. A record already `REVOKED` is
+answered `200` with status `REVOKED` and nothing changes, including who is recorded as
+having revoked it. This is the one notification that is never answered `409`: it is how a
+node resets a connection whatever state the two sides have reached, and either node may
+send it at any stage. Revoking a `PENDING` record withdraws the request when the requester
+sends it and refuses it when the other node does.
 
 The record is kept because a restore refers to it and because a repeated connection request
 from the revoked node is answered from it. Which node revoked it is kept because only that
-node may restore it; see [Connection Restored](#connection-restored). Either node of an
-`ACTIVE` connection may revoke it. When both revoke at once, each node's record shows itself
-as the revoker, and the connection is restored by a person at each organization outside the
-protocol.
+node may restore it; see [Connection Restored](#connection-restored). When both nodes revoke
+at once, each record shows its own node as the revoker; each node then lifts its own
+revocation with a Connection Restored, and the second of those meets an `ACTIVE` record and
+is answered `200`.
 
 Endorsements issued by a node whose connection has been revoked no longer verify on the
 node that revoked it, since verification requires the endorser to be an `ACTIVE` connection;
@@ -771,11 +786,46 @@ None. The receiving node is identified by its `mip_url`.
 
 ```json
 {
-  "mip_identifier": "512ef14957203c6323e79937f3935708"
+  "node_profile": {
+    "mip_identifier": "512ef14957203c6323e79937f3935708",
+    "mip_url": "https://mip.example.org/api/mip/node/512ef14957203c6323e79937f3935708",
+    "organization_legal_name": "Grand Lodge of Elsewhere",
+    "contact_person": "Mary Jones",
+    "contact_phone": "+1-555-987-6543",
+    "organization_public_website": "https://www.elsewhere.example",
+    "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "gdpr_metadata": {
+      "controller": { "role": "controller", "name": "Grand Lodge of Elsewhere" },
+      "processors": [
+        { "name": "Elsewhere Software Vendor", "role": "processor" }
+      ],
+      "sub_processors": [
+        { "name": "Example Cloud Hosting" }
+      ]
+    }
+  },
+  "share_my_organization": true,
+  "daily_rate_limit": 100,
+  "authentication_type": "MANUAL",
+  "endorsement": {
+    "endorser_mip_identifier": "512ef14957203c6323e79937f3935708",
+    "endorsed_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
+    "endorsed_public_key_fingerprint": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+    "endorsement_document": "{\"type\":\"MIP_ENDORSEMENT_V2\",\"endorser_mip_identifier\":\"512ef14957203c6323e79937f3935708\",\"endorsed_mip_identifier\":\"e82d40e9416304e8c72790b45b27a8e6\",\"endorsed_public_key_fingerprint\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"issued_at\":\"2026-09-17T12:00:00Z\",\"expires_at\":\"2027-09-17T12:00:00Z\"}",
+    "endorsement_signature": "g2FAOk4wXU6+j85b+1kpz3kgRH+ZmFIk2YkNkCP5GP8l...",
+    "issued_at": "2026-09-17T12:00:00Z",
+    "expires_at": "2027-09-17T12:00:00Z"
+  }
 }
 ```
 
-- **mip_identifier**: REQUIRED. The restoring node's MIP identifier.
+The payload is that of [Connection Approved](#connection-approved), and every field has the
+meaning given there, with two fixed values. `authentication_type` is `MANUAL`, since a
+restore is always a person's decision. `endorsement` is therefore always present: it is the
+restorer's endorsement of the node being restored, issued at the restore, and it replaces
+the one the receiver holds from that endorser. Every path by which a connection becomes
+`ACTIVE` carries this payload, so that a record is complete whatever states it passed
+through on the way.
 
 #### Response Payload
 
@@ -795,14 +845,24 @@ None. The receiving node is identified by its `mip_url`.
 - **data.mip_connection.status**: `ACTIVE`.
 
 The source state is `REVOKED`, revoked by the sender, and the target state is `ACTIVE`; see
-[Notification Delivery](#notification-delivery). Such a record is marked `ACTIVE` and the
-receiver resumes honoring requests. A record already `ACTIVE` is answered `200` with status
-`ACTIVE` and nothing changes; this is what a restore meets when the revocation it lifts was
-never delivered, and the two nodes then agree. A record that is `REVOKED` but was revoked
-by the receiver, or that is in any other state, is answered `409`
+[Notification Delivery](#notification-delivery). Such a record is marked `ACTIVE` and
+processed exactly as under [Connection Approved](#connection-approved): the receiver records
+`authentication_type`, `daily_rate_limit`, and `share_my_organization`, stores the
+restorer's `gdpr_metadata`, stores the endorsement, and resumes honoring requests. A record
+that was revoked while still `PENDING` and never approved before becomes `ACTIVE` this way
+with everything an approval would have given it. A record already `ACTIVE` is answered
+`200` with status `ACTIVE` and nothing changes; this is what a restore meets when the
+revocation it lifts was never delivered, and the two nodes then agree. A record that is
+`REVOKED` but was revoked by the receiver, or that is in any other state, is answered `409`
 `connection_state_invalid`. This endpoint is exempt from the `ACTIVE` connection check in
 the order of checks, since the sender's connection is `REVOKED` by definition when it
 arrives.
+
+What follows a restore is what follows an approval. The restorer pushes its known nodes to
+the restored node and announces it to its other sharing connections through
+[Shared Nodes](#shared-nodes), and the restored node issues its own endorsement of the
+restorer under the same rule that applies when a connection is first approved; see
+[Endorsements](#endorsements).
 
 Only the node that revoked a connection can restore it, and the receiver enforces this from
 its record of who revoked it. A revoked node that wants the connection back contacts the
@@ -1620,8 +1680,9 @@ attributes of the connection itself, under `data.mip_connection`:
 - **status**: `PENDING`, `ACTIVE`, `DECLINED`, or `REVOKED`.
 - **authentication_type**: how the connection came to be approved: `MANUAL` when a person
   approved it, `ENDORSEMENT` when it was approved by the web of trust. `null` while the
-  connection is `PENDING` or `DECLINED`; a `REVOKED` connection keeps the value it had when
-  it was `ACTIVE`.
+  connection is `PENDING` or `DECLINED`; a `REVOKED` connection keeps the value it had
+  before revocation, which is `null` if it was never `ACTIVE`; a restored connection records
+  `MANUAL`.
 - **daily_rate_limit**: the number of requests per day the responding node accepts from this
   connection.
 
