@@ -104,7 +104,8 @@ bits; the bound keeps the signature and public key headers under common per-head
 limits. A receiver MUST reject a connection request whose key is outside these bounds (see
 Error Responses). The bound applies to the key presented in a connection request; a node's key
 cannot be changed through an organization update, and key rotation is outside the scope of
-this version of the protocol.
+this version of the protocol (see [Key Rotation](#key-rotation) under MIP 2.1 Proposed
+Ideas for why it is needed).
 
 Public keys are exchanged in PEM format (`-----BEGIN PUBLIC KEY-----`, the SubjectPublicKeyInfo
 encoding).
@@ -517,7 +518,9 @@ asking for the connection and refusing it cannot both be meant.
 A repeated request MUST present the same public key the receiver already holds for that
 identifier. A different key is answered `422` `public_key_mismatch` and changes nothing, so
 that a repeated request cannot be used to swap a key before anyone has verified it. Changing
-a node's key is outside the scope of this version of the protocol.
+a node's key is outside the scope of this version of the protocol; a node that rotates its
+key after a connection is declined or revoked cannot reopen it in 2.0, and that is left for
+2.1 (see [Key Rotation](#key-rotation)).
 
 Because the answer is the receiver's current status, a repeated request is also how a node
 learns what the other side holds after a failed or doubtful exchange; see
@@ -2054,6 +2057,34 @@ When the requesting organization holds a full member record for the person, it c
 `requesting_member_profile` in the Member Profile format to the certificate request, so the
 responding side has more to match against. It would be absent when the person is not yet a
 member on the requesting side.
+
+## Key Rotation
+
+2.0 fixes a node's key for as long as any other node holds it. A key cannot be changed by an
+Organization Update, and a repeated Connection Request presenting a different key is refused
+with `public_key_mismatch`, so that a repeat cannot swap in a key nobody has verified. The
+cost of that rule falls on any node that rotates its key, and it falls hardest on connections
+that are not `ACTIVE`.
+
+Consider a connection that was declined or revoked, after which either node rotates its key.
+The other node still holds the old key against the record. A new Connection Request from the
+rotated node carries the new key, and is answered `422` `public_key_mismatch`; the record is
+never reopened. The rotated node cannot revoke either, since its signature no longer verifies
+against the key on file, and it cannot receive an update, since the other node holds no
+`ACTIVE` connection to send one over. No move in 2.0 repairs this, and the two organizations
+are left to have a person on each side delete or edit a record by hand, which the connection
+rules otherwise never require.
+
+An `ACTIVE` connection that rotates its key has the same problem one step later: every
+signed request fails, and the only 2.0 remedy is to revoke and start again, which is
+impossible for the reason above.
+
+2.1 needs a way to rotate a key that a person can verify out of band, most likely by reading
+the new key's fingerprint over the telephone the same way a connection is first approved,
+and it needs that way to work against a `DECLINED` or `REVOKED` record as well as an `ACTIVE`
+one. Whether that is a new endpoint, a signed rotation document carried on a Connection
+Request and countersigned by the old key, or something else, is for 2.1 to decide. What 2.0
+settles is only that a repeated request on its own MUST NOT change a stored key.
 
 ## Linked Members
 

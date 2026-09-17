@@ -161,7 +161,9 @@ requester without a person reviewing the same request again each time; it stays 
 off the wire so that it adds no state to the protocol and no history to the record.
 Refusing a different key is a security rule: otherwise a repeated request could swap in a
 new key before anyone had verified the old one over the telephone. Key rotation is left for
-a later version.
+a later version, and the 2.0 document's "Key Rotation" entry under MIP 2.1 Proposed Ideas
+records why it cannot wait longer than that: a node that rotates its key after a connection
+is declined or revoked has no way in 2.0 to reopen it.
 
 ### Public key on a Connection Request (breaking, security)
 
