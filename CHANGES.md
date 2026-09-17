@@ -196,9 +196,9 @@ on a manual approval.
 Declined, Revoked, and Restored. Each names a source state and a target state. A record in
 the source state moves to the target state; a record already in the target state is
 answered `200` with its status and nothing changes; a record in neither state is answered
-`409` `connection_state_invalid`. A sender changes its own record before sending, keeps
-retrying after a `5xx`, a `429`, or no response, stops on any other `4xx`, and shows a
-`409` to a person rather than changing its own record. A node does not send Restored while
+`409` `connection_state_invalid`. A sender changes its own record before sending, retries
+after a `5xx`, a `429`, or no response until it is answered otherwise, treats any other
+answer as final, and shows a `409` to a person rather than changing its own record. A node does not send Restored while
 its Revoked is still undelivered. Connection Revoked joins the endpoints exempt from the
 active-connection check in the order of checks, so that a retried revocation reaches its
 idempotent answer instead of `403` `connection_not_active`.

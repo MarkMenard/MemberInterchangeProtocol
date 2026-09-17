@@ -516,10 +516,10 @@ according to the other's record.
 
 Three rules keep every such disagreement recoverable without a person's involvement.
 
-- **The sender retries.** A sender MUST keep a notification until it is answered `200` or a
-  `4xx` other than `429`, and MUST retry it after a `5xx`, a `429`, or no response. Retries
-  SHOULD back off and continue for at least a day. A retry is a fresh request with its own
-  timestamp and signature; it is not a replay.
+- **The sender retries.** A sender MUST retry a notification that is answered `5xx` or
+  `429`, or that gets no response, until it is answered otherwise. Any other answer is
+  final. Retries SHOULD back off and continue for at least a day. A retry is a fresh request
+  with its own timestamp and signature; it is not a replay.
 - **The receiver is idempotent.** Each notification names a source state and a target
   state. A record in the source state moves to the target state. A record already in the
   target state is answered `200` with that status and nothing changes. Only a record in
