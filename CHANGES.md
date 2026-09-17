@@ -130,7 +130,10 @@ early enough that adding the field now costs little.
 **What changed.** `data.mip_connection` keeps 1.0's `status`, `daily_rate_limit`, and
 `node_profile`, and adds `authentication_type` (`null` while pending, `ENDORSEMENT` when
 approved on the spot). `status` gains a fifth value, `REOPENED`; see Repeated Connection
-Requests below. The responder's `node_profile` carries its `gdpr_metadata`. The
+Requests below. The response also adds `share_my_organization`, the responder's answer to
+whether the requester may tell other nodes about it, which 1.0 carried only on Connection
+Approved; a connection approved on the spot by endorsement never receives that request and
+had no way to learn it. The responder's `node_profile` carries its `gdpr_metadata`. The
 `daily_rate_limit` is the limit the responder applies, not a placeholder. The response never
 carries an endorsement or a list of other nodes.
 
@@ -293,7 +296,8 @@ for a later version.
 
 **What changed.** 1.0 returned `data.node_profile`. 2.0 returns `data.mip_connection` in the
 same shape as the Connection Request response: `status`, `authentication_type`,
-`daily_rate_limit`, and the receiver's `node_profile` with its `gdpr_metadata`.
+`daily_rate_limit`, `share_my_organization`, and the receiver's `node_profile` with its
+`gdpr_metadata`.
 
 **Why.** One response shape for "here is this connection and the node behind it" instead of
 two. The connection attributes cost nothing to include and let the sender refresh its rate

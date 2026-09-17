@@ -391,6 +391,7 @@ None. The receiving node is identified by its `mip_url`.
       "status": "PENDING",
       "authentication_type": null,
       "daily_rate_limit": 100,
+      "share_my_organization": true,
       "node_profile": {
         "mip_identifier": "512ef14957203c6323e79937f3935708",
         "mip_url": "https://mip.example.org/api/mip/node/512ef14957203c6323e79937f3935708",
@@ -425,6 +426,9 @@ None. The receiving node is identified by its `mip_url`.
   [authentication_type](#connection-attributes).
 - **data.mip_connection.daily_rate_limit**: the number of requests per day the receiving
   node will accept from this connection.
+- **data.mip_connection.share_my_organization**: whether the requester may tell other nodes
+  about the receiving node. Carried here so that a connection approved on the spot, which
+  never receives a Connection Approved, learns it all the same.
 - **data.mip_connection.node_profile**: the receiving node's own profile, including its
   `gdpr_metadata`.
 
@@ -433,8 +437,8 @@ specified under [Endorsements](#endorsements), and known nodes are pushed afterw
 [Shared Nodes](#shared-nodes).
 
 The requester records the connection from the response: its `status`,
-`authentication_type`, and `daily_rate_limit`, and the receiver's profile and
-`gdpr_metadata`. This applies equally when the request repeats an existing connection. The
+`authentication_type`, `daily_rate_limit`, and `share_my_organization`, and the receiver's
+profile and `gdpr_metadata`. This applies equally when the request repeats an existing connection. The
 node that sent it MUST bring its own record into line with the status reported, whatever
 that record held before, and if it had blocked the receiving node it SHOULD clear the
 block; see Repeated Requests. A node that asks for a connection has, by asking, withdrawn
@@ -878,6 +882,7 @@ changed by telling a peer.
       "status": "ACTIVE",
       "authentication_type": "MANUAL",
       "daily_rate_limit": 100,
+      "share_my_organization": true,
       "node_profile": {
         "mip_identifier": "512ef14957203c6323e79937f3935708",
         "mip_url": "https://mip.example.org/api/mip/node/512ef14957203c6323e79937f3935708",
@@ -902,8 +907,8 @@ changed by telling a peer.
 ```
 
 The response has the same shape as the Connection Request response: the connection's
-`status`, `authentication_type`, and `daily_rate_limit`, and the receiving node's own current
-profile including its `gdpr_metadata`. The sender updates its record of the receiver from it,
+`status`, `authentication_type`, `daily_rate_limit`, and `share_my_organization`, and the
+receiving node's own current profile including its `gdpr_metadata`. The sender updates its record of the receiver from it,
 subject to the same rule: `mip_identifier` and `public_key` in the response are not applied.
 
 ### Shared Nodes
@@ -980,7 +985,8 @@ None. The receiving node is identified by its `mip_url`.
 #### Which Nodes May Be Shared
 
 A node MAY share a connection only when that connection is `ACTIVE` and the other node set
-`share_my_organization` to `true` when the connection was requested or approved. A sender
+`share_my_organization` to `true`, whether in its Connection Request, its Connection
+Approved, or the response to either a Connection Request or an Organization Update. A sender
 MUST NOT share a node that has not permitted it and MUST NOT include the receiver itself in
 the batch.
 
@@ -1618,12 +1624,13 @@ nodes.
   where the profile describes a third node. See [GDPR Metadata](#gdpr-metadata).
 
 `share_my_organization` is not part of the profile. It is a flag on the Connection Request
-and Connection Approved payloads, because it is a term of the connection rather than a fact
+and Connection Approved payloads and a connection attribute in the Connection Request and
+Organization Update responses, because it is a term of the connection rather than a fact
 about the node.
 
 ### Connection Attributes
 
-Beside the Node Profile, the Connection Request and Organization Update responses carry three
+Beside the Node Profile, the Connection Request and Organization Update responses carry four
 attributes of the connection itself, under `data.mip_connection`:
 
 - **status**: `PENDING`, `REOPENED`, `ACTIVE`, `DECLINED`, or `REVOKED`. `REOPENED` is a
@@ -1635,6 +1642,9 @@ attributes of the connection itself, under `data.mip_connection`:
   it had before revocation, which is `null` if it was never `ACTIVE`.
 - **daily_rate_limit**: the number of requests per day the responding node accepts from this
   connection.
+- **share_my_organization**: whether the node receiving the response may tell other nodes
+  about the responding node. The same value Connection Approved carries; it is here so that
+  a connection approved on the spot, which never receives that request, learns it too.
 
 ## GDPR Metadata
 
