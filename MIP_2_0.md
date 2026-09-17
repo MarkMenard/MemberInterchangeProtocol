@@ -477,6 +477,10 @@ connection to its other sharing connections, as specified under [Shared Nodes](#
 When the policy is not met the connection is stored as `PENDING`, presented to a person for
 approval or decline, and the response carries `status` `PENDING`.
 
+Automatic approval applies only to a record the request being processed created. A request
+that reopens a `DECLINED` or `REVOKED` record is approved only by a person; see Repeated
+Requests.
+
 #### Manual Approval
 
 A person at the receiving organization approves or declines a pending request. Before
@@ -502,28 +506,25 @@ connection's current status and MUST NOT create a second record. What else happe
 the status:
 
 - `PENDING` or `ACTIVE`: nothing changes.
-- `DECLINED`: the receiver reopens the same record and handles the request as a new one. If
-  the receiver has blocked the requester, nothing changes and the response reports
-  `DECLINED`.
-- `REVOKED`: the receiver reopens the same record and handles the request as a new one. If
-  the receiver has blocked the requester, nothing changes and the response reports
-  `REVOKED`.
+- `DECLINED`: the receiver reopens the same record as `PENDING`, presents it to a person,
+  and answers `PENDING`. If the receiver has blocked the requester, nothing changes and the
+  response reports `DECLINED`.
+- `REVOKED`: the receiver reopens the same record as `PENDING`, presents it to a person,
+  and answers `PENDING`. If the receiver has blocked the requester, nothing changes and the
+  response reports `REVOKED`.
 
-A reopened request is a new request in every respect but the record it lands on. The
-receiver refreshes the stored profile and `gdpr_metadata` from it, stores the presented
-endorsements, and evaluates them for automatic approval exactly as under Processing a
-Connection Request: the record becomes `ACTIVE` at once when the receiver's policy is met,
-or `PENDING` and presented to a person when it is not, and the response reports whichever
-it became. A record reopened as `PENDING` can also be completed later by an endorsement, as
-any `PENDING` record can. A node that wants a decline or revocation to stand against the
-web of trust as well as against the requester blocks the node; nothing else keeps a
-reopened request from being approved without a person.
+A reopened request is approved or declined only by a person. The receiver refreshes the
+stored profile and `gdpr_metadata` from it and stores the presented endorsements, but MUST
+NOT evaluate them for automatic approval, and a record reopened as `PENDING` MUST NOT be
+completed later by an endorsement either. A person declined or revoked this connection, and
+the web of trust does not overrule a person. A receiver therefore has to know that a
+`PENDING` record was reopened rather than newly created, for as long as it stays `PENDING`.
 
 This is the only way a revoked connection comes back, and it works the same whichever node
 revoked it and whichever node made the original request. The requester withdraws its
-objection by asking; the receiver withdraws its own by approving, whether a person or its
-policy does so, and the approval rebuilds the record in full. A node that revoked a
-connection and wants it back sends a Connection Request like any other node.
+objection by asking; the receiver withdraws its own by approving, and the approval rebuilds
+the record in full. A node that revoked a connection and wants it back sends a Connection
+Request like any other node.
 
 A node MAY block a node whose connection it holds as `DECLINED` or `REVOKED`. A block is a
 mark a person sets on the connection, normally when declining or revoking it, and it is
@@ -1132,7 +1133,9 @@ An endorsement arriving here can complete a pending connection. When the receive
 `PENDING` connection request from the endorsed node and the newly verified endorsement
 satisfies its automatic approval policy, the receiver MAY approve that connection and send the
 endorsed node a [Connection Approved](#connection-approved) request with `authentication_type`
-`ENDORSEMENT` and no `endorsement`.
+`ENDORSEMENT` and no `endorsement`. A `PENDING` record that was reopened from `DECLINED` or
+`REVOKED` is not eligible; a person declined or revoked it, and only a person approves it
+again. See Repeated Requests under [Connection Request](#connection-request).
 
 ## Member Protocol
 
