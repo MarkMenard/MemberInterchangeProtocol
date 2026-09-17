@@ -493,16 +493,26 @@ connection's current status and MUST NOT create a second record. What else happe
 the status:
 
 - `PENDING` or `ACTIVE`: nothing changes.
-- `DECLINED` or `REVOKED`: the receiver reopens the same record as `PENDING`, presents it for
-  approval again, and answers `PENDING`. A node MAY decline such a request automatically for
-  a requester it has chosen to block; the response then reports `DECLINED`, indistinguishable
-  from a decline made by a person.
+- `DECLINED`: the receiver reopens the same record as `PENDING`, presents it for approval
+  again, and answers `PENDING`. If the receiver has blocked the requester, nothing changes
+  and the response reports `DECLINED`.
+- `REVOKED`: the receiver reopens the same record as `PENDING`, presents it for approval
+  again, and answers `PENDING`. If the receiver has blocked the requester, nothing changes
+  and the response reports `REVOKED`.
 
 This is the only way a revoked connection comes back, and it works the same whichever node
 revoked it and whichever node made the original request. The requester withdraws its
 objection by asking; the receiver withdraws its own by approving, and its approval rebuilds
 the record in full. A node that revoked a connection and wants it back sends a Connection
 Request like any other node.
+
+A node MAY block a node whose connection it holds as `DECLINED` or `REVOKED`. A block is a
+mark a person sets on the connection, normally when declining or revoking it, and it is
+never sent: `BLOCKED` is not a status, and a blocked node is told only that the connection
+is still `DECLINED` or `REVOKED`. A block ends when a person clears it, after which a
+repeated request reopens the record as above. A node that has blocked another and then
+sends it a Connection Request of its own SHOULD clear the block as part of sending, since
+asking for the connection and refusing it cannot both be meant.
 
 A repeated request MUST present the same public key the receiver already holds for that
 identifier. A different key is answered `422` `public_key_mismatch` and changes nothing, so
