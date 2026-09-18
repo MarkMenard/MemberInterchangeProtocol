@@ -257,8 +257,9 @@ the specific one.
 Errors are listed in `meta.errors`. Each error has a `code` from the catalog below and a
 `message` for a person to read. Clients MUST NOT parse `message`. An error that concerns one
 field of the request adds `field`, naming it. A `connection_state_invalid` error adds
-`status`, the receiver's current status of the connection; see
-[Notification Delivery](#notification-delivery). A `connection_mismatch` error means the
+`status`, the receiver's current status of the connection, and so does a
+`connection_not_active` error; see [Notification Delivery](#notification-delivery). A
+`connection_mismatch` error means the
 sender is not the node entitled to send that request on that connection: a reply from a
 connection other than the one that made the request, or a connection notification from the
 wrong side of the connection.
@@ -315,7 +316,9 @@ for the first fault found.
    Connection Request, Connection Approved, Connection Declined, and Connection Revoked.
    Connection Revoked is exempt because it is accepted from any state; see
    [Connection Revoked](#connection-revoked). Any other request from a connection that is
-   not `ACTIVE` is answered `connection_not_active`.
+   not `ACTIVE` is answered `connection_not_active`, carrying the connection's current
+   status in `status`, which the sender records; see
+   [Notification Delivery](#notification-delivery).
 6. **Rate limit** (`429`): the connection is within its daily limit. A Connection Request is
    exempt.
 7. **Endpoint rules**: the checks specified under each endpoint.
@@ -579,15 +582,21 @@ above.
 
 Connection Approved, Connection Declined, and Connection Revoked each tell the other node
 that the sender has changed the connection. Each is one request with one
-answer, and the two nodes agree about the connection only once that answer has arrived. Four
+answer, and the two nodes agree about the connection only once that answer has arrived. Five
 rules keep them in agreement without background retries, queues, or locks on either side.
 
-- **The sender changes its record on `200` and not before.** A node sends the notification
-  when a person takes the action, and records the new state when the receiver answers
-  `200`. A `5xx`, a `429`, or no response changes nothing on the sender; the person is told
-  the notification did not go through and may try again later. There is no automatic retry.
-  A node MUST let a person re-send any notification. A re-send is a fresh request with its
-  own timestamp and signature; it is not a replay.
+- **The sender changes its record on `200` and not before, except when it revokes.** A node
+  sends a Connection Approved or Connection Declined when a person takes the action, and
+  records the new state when the receiver answers `200`. A `5xx`, a `429`, or no response
+  changes nothing on the sender; the person is told the notification did not go through and
+  may try again later. A node that revokes marks its own record `REVOKED` when the person
+  acts, whatever the other node then answers, and sends the Connection Revoked afterward: a
+  node is not hostage to the node it is revoking. This is safe because Revoked is the one
+  notification the receiver never answers `409`, so a re-send can never conflict. A failed
+  Revoked is still reported to the person, who may re-send it. There is no automatic retry
+  of any notification but the one recommended below. A node MUST let a person re-send any
+  notification. A re-send is a fresh request with its own timestamp and signature; it is not
+  a replay.
 - **The receiver is idempotent, and it checks who is asking.** A Connection Approved or
   Connection Declined is accepted only by the node that asked for the connection, and only
   from the other node; one from the wrong side is answered `403` `connection_mismatch` and
@@ -600,6 +609,14 @@ rules keep them in agreement without background retries, queues, or locks on eit
   receiver's current status of the connection in `status`, so that the person sees the
   disagreement itself rather than a bare conflict. The sender MUST NOT change its own record
   on the strength of a `409`.
+- **A `403` says what the receiver holds, and the sender catches up.** The
+  `connection_not_active` error carries the receiver's current status of the connection in
+  `status`, and the sender MUST record it, on the same ground as for a Connection Request:
+  the answering node is the one whose approval or refusal counts. A node behind on a
+  revocation learns `REVOKED` on its next ordinary request without reopening anything. The
+  two errors are treated differently because a `409` answers an action a person is in the
+  middle of, so the person sees the conflict and chooses, while a `403` answers a routine
+  request with no one mid-action, so the node may simply catch up.
 - **Either node can ask.** A Connection Request to a node that already holds the connection
   is answered with that node's current status, whichever node made the original request,
   and changes nothing there unless the record is `DECLINED` or `REVOKED` and the sender is
@@ -608,18 +625,25 @@ rules keep them in agreement without background retries, queues, or locks on eit
   holds, and MUST record the status reported, since the answering node is the one whose
   approval or refusal counts and the response carries everything an approval carries.
 
-One retry is RECOMMENDED. When a pending request is approved by an endorsement that arrives
+One retry is RECOMMENDED, and only one. When a pending request is approved by an endorsement that arrives
 later (see [Late Automatic Approval](#late-automatic-approval)), no person is at hand to
 re-send a Connection Approved that fails. A node SHOULD retry that one notification in the
 background, with backoff and for a bounded period, and tell a person if it still fails. The
 rules above make this safe: the record changes only on `200`; a retry that finds the record
 already `ACTIVE` is answered `200`; and one that finds it in any other state, because a
-person acted in the meantime, is answered `409` and dropped.
+person acted in the meantime, is answered `409` and dropped. A Connection Revoked is not
+retried in the background: a revocation sent by mistake that then failed to deliver would
+keep trying with no way for the person to stop it, and the rules above bring the records
+into agreement without a retry.
 
-These rules are enough because the only disagreement they can leave behind is a lost reply:
-the receiver changed and the sender did not. The sender's record still shows the action as
-not done, so the person takes it again, and the receiver, already in the target state,
-answers `200`. A disagreement that arises some other way, such as a record restored from a
+These rules are enough because they leave behind only two disagreements. The first is a
+lost reply: the receiver changed and the sender did not. The sender's record still shows the
+action as not done, so the person takes it again, and the receiver, already in the target
+state, answers `200`. The second is an undelivered revocation: the revoker holds `REVOKED`
+and the other node still holds `ACTIVE`. The revoker sends nothing and answers every request
+from the other node `403` `connection_not_active` carrying `REVOKED`, which that node
+records, so it learns on its next request; a re-sent Revoked, or a Connection Request from
+either node, does the same. A disagreement that arises some other way, such as a record restored from a
 backup, is repaired with the same moves a person makes every day: Connection Revoked is
 accepted from any state and resets a connection, and a Connection Request reopens it, so
 that an approval rebuilds the `ACTIVE` record in full. No implementation needs to let anyone
@@ -833,6 +857,14 @@ None. The receiving node is identified by its `mip_url`.
 ```
 
 - **data.mip_connection.status**: `REVOKED`.
+
+The revoking node marks its own record `REVOKED` when the person acts, before sending and
+whatever the response; see [Notification Delivery](#notification-delivery). From that
+moment it sends the revoked node nothing, refuses its requests with `403`
+`connection_not_active` carrying `REVOKED`, and stops verifying its endorsements. Until the
+notification is delivered the revoked node may still count the revoker's endorsements and
+still list the revoker in Shared Nodes if permitted to; both end when it learns, and neither
+harms the revoker.
 
 The target state is `REVOKED` and the source state is any other; see
 [Notification Delivery](#notification-delivery). Whatever the receiver holds, the record is
