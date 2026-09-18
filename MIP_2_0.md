@@ -53,6 +53,8 @@ defines how nodes exchange information, not what an organization does with it on
 - **Share Request**: ask a connected node to send its known nodes.
 - **Endorsement**: send a cryptographic endorsement of a node's identity to build the web of
   trust.
+- **Endorsement Revoked**: withdraw an endorsement the sender issued, so that the nodes
+  holding it stop counting and relaying it.
 
 ### Member Protocol
 
@@ -884,7 +886,10 @@ way as one that only one of them did.
 
 Endorsements issued by a node whose connection has been revoked no longer verify on the
 node that revoked it, since verification requires the endorser to be an `ACTIVE` connection;
-see [Endorsement Verification](#endorsement-verification).
+see [Endorsement Verification](#endorsement-verification). Revoking a connection revokes no
+endorsement, on either side. An endorsement is withdrawn by a separate step, an
+[Endorsement Revoked](#endorsement-revoked), which reaches the nodes that hold it. A system
+MAY offer a person both in one act; they are two actions on the wire.
 
 ### Organization Update
 
@@ -1023,7 +1028,8 @@ None. The receiving node is identified by its `mip_url`.
           "issued_at": "2026-03-01T09:30:00Z",
           "expires_at": "2027-03-01T09:30:00Z"
         }
-      ]
+      ],
+      "revocations": []
     }
   ]
 }
@@ -1033,6 +1039,9 @@ None. The receiving node is identified by its `mip_url`.
   requests. Each element is a [Node Profile](#node-profile) without `gdpr_metadata`, plus:
   - **endorsements**: REQUIRED, MAY be empty. Endorsements of that node which the sender
     holds and has verified. See Selecting Endorsements to Relay.
+  - **revocations**: REQUIRED, MAY be empty. Revocations of endorsements of that node which
+    the sender holds and has verified, each in the full payload form under
+    [Endorsement Revocation](#endorsement-revocation). See Selecting Endorsements to Relay.
 
 #### Response Payload
 
@@ -1063,19 +1072,24 @@ directly to each peer; see [GDPR Metadata](#gdpr-metadata).
 
 #### Selecting Endorsements to Relay
 
-Each element carries at most five endorsements. The sender MUST relay only endorsements it
-has verified (see [Endorsement Verification](#endorsement-verification)) and MUST NOT relay an
-endorsement it holds as unverified, expired, or revoked. When the sender has issued its own
-endorsement of the node, that endorsement is included first; the remaining places are filled
-with the other verified endorsements, newest `issued_at` first, up to five in total.
+Each element carries at most five documents, endorsements and revocations together. The
+sender MUST relay only documents it has verified (see
+[Endorsement Verification](#endorsement-verification)) and MUST NOT relay an endorsement it
+holds as unverified, expired, or revoked, nor a revocation it holds as unverified. A
+revocation is relayed in place of the endorsement it cancels, so that a node which received
+that endorsement second-hand learns it was withdrawn. When the sender has issued its own
+endorsement or revocation of the node, that document is included first; the remaining places
+are filled with the other verified documents, newest `issued_at` first, up to five in total.
 
 The limits bound the size of a batch: twenty nodes, each with a key of up to 8192 bits and
-five endorsements, fit within a 256 KiB request.
+five documents, fit within a 256 KiB request. A revocation is smaller than the endorsement
+it replaces, so the bound holds whatever the mix.
 
 #### Processing Shared Nodes
 
 The receiver records each element as a known node, or updates its existing record, and
-stores the relayed endorsements as specified under [Endorsement Storage](#endorsement-storage).
+stores the relayed endorsements and revocations as specified under
+[Endorsement Storage](#endorsement-storage).
 Nothing in a shared element is proof of the node's identity: the receiver has only the
 sender's word for the profile, and the endorsements verify only where the receiver holds the
 endorser's key. Whether the receiver then attempts a connection to a known node, and on what
@@ -1196,14 +1210,15 @@ and is not stored.
     "succeeded": true
   },
   "data": {
-    "endorsement_id": "0192b0c4-9a3e-7f21-8c4d-5e6f7a8b9c0d"
+    "acknowledged": true
   }
 }
 ```
 
-- **data.endorsement_id**: the receiver's identifier for the stored endorsement. A
-  re-sent endorsement identical to one already stored is answered `200` with the same
-  identifier and changes nothing.
+- **data.acknowledged**: `true`. The endorsement is stored. A re-sent endorsement identical
+  to one already stored is answered `200` and changes nothing. An endorsement carries no
+  identifier of its own: it is named by its endorser, endorsed node, fingerprint, and
+  `issued_at`, all of which are inside the signed document.
 
 #### Late Automatic Approval
 
@@ -1214,6 +1229,90 @@ endorsed node a [Connection Approved](#connection-approved) request with `authen
 `ENDORSEMENT` and no `endorsement`. A `REOPENED` record is not eligible; a person declined
 or revoked it, and only a person approves it again. See Repeated Requests under
 [Connection Request](#connection-request).
+
+### Endorsement Revoked
+
+Withdraw an endorsement the sending node issued. A node that no longer stands behind a node
+it endorsed tells the nodes that may hold that endorsement, so that they stop counting it
+toward automatic approval and stop relaying it.
+
+Revoking an endorsement is a decision made by a person, as issuing one is. Only the endorser
+can revoke its endorsement; nobody else speaks for it. The endorser sends the revocation to
+each of its `ACTIVE` connections, and it travels onward in Shared Nodes batches in place of
+the endorsement it cancels; see
+[Selecting Endorsements to Relay](#selecting-endorsements-to-relay). It is not sent to the
+endorsed node, which need not be a connection any longer; that node learns of it, if at
+all, the way any other node does.
+
+Revoking a connection revokes no endorsement, and revoking an endorsement revokes no
+connection. They are separate protocol actions with different audiences: Connection Revoked
+reaches the one node being cut off, while an Endorsement Revoked reaches the nodes that hold
+the endorsement, and it still travels after the endorsed node has stopped being an `ACTIVE`
+connection of the endorser. A system MAY offer a person both in one act; they remain two
+requests on the wire.
+
+#### Endpoint: `<mip_url>/endorsement_revoked`
+
+#### Arguments
+
+None. The receiving node is identified by its `mip_url`.
+
+#### HTTP Action: POST
+
+#### Payload Format: JSON
+
+#### Request Payload
+
+```json
+{
+  "endorser_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
+  "endorsed_mip_identifier": "512ef14957203c6323e79937f3935708",
+  "endorsed_public_key_fingerprint": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+  "revocation_document": "{\"type\":\"MIP_ENDORSEMENT_REVOCATION_V2\",\"endorser_mip_identifier\":\"e82d40e9416304e8c72790b45b27a8e6\",\"endorsed_mip_identifier\":\"512ef14957203c6323e79937f3935708\",\"endorsed_public_key_fingerprint\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"issued_at\":\"2026-11-02T09:00:00Z\"}",
+  "revocation_signature": "k9PZlQ2c0R7v+M4xWb1nJ6yTgE8sHf3aLu5dVq0pXo2i...",
+  "issued_at": "2026-11-02T09:00:00Z"
+}
+```
+
+The payload is an [Endorsement Revocation](#endorsement-revocation) in the full payload form.
+
+The sending node MUST be the endorser: `endorser_mip_identifier` MUST equal the
+`X-MIP-MIP-IDENTIFIER` header. Otherwise the request is answered `400`
+`endorsement_sender_mismatch`. A third party's revocation reaches a node only inside a Shared
+Nodes batch, never here.
+
+Because the sender is the endorser and is an `ACTIVE` connection, the receiver holds its key,
+and every revocation arriving here is either verified or rejected; none is stored as
+unverified. A revocation that fails any step of
+[Endorsement Verification](#endorsement-verification), as applied to revocations, is
+answered `400` `endorsement_invalid` and is not stored.
+
+#### Response Payload
+
+```json
+{
+  "meta": {
+    "succeeded": true
+  },
+  "data": {
+    "acknowledged": true
+  }
+}
+```
+
+- **data.acknowledged**: `true`. The revocation is stored and applied. A re-sent revocation
+  identical to one already stored is answered `200` and changes nothing. A revocation naming
+  an endorsement the receiver does not hold is stored all the same, so that a copy of that
+  endorsement arriving later is refused; see [Endorsement Storage](#endorsement-storage).
+
+#### Effect of a Revocation
+
+A verified revocation marks the endorsement it names revoked, under the ordering rule in
+[Endorsement Storage](#endorsement-storage). From then on the receiver does not count that
+endorsement toward automatic approval and does not relay it; it relays the revocation in
+its place. A revocation is not retroactive: a connection already approved on the strength of
+the endorsement stays `ACTIVE`, with its `authentication_type` unchanged. Whether the
+receiving organization looks again at such a connection is its own policy.
 
 ## Member Protocol
 
@@ -1993,6 +2092,50 @@ signature = Base64.strict_encode64(
 )
 ```
 
+### Endorsement Revocation
+
+A revocation is the endorser's signed statement that it withdraws its endorsement of a node.
+The revocation document is the JSON object the endorser signs:
+
+```json
+{
+  "type": "MIP_ENDORSEMENT_REVOCATION_V2",
+  "endorser_mip_identifier": "512ef14957203c6323e79937f3935708",
+  "endorsed_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
+  "endorsed_public_key_fingerprint": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "issued_at": "2026-11-02T09:00:00Z"
+}
+```
+
+- **type**: `MIP_ENDORSEMENT_REVOCATION_V2`.
+- **endorser_mip_identifier**, **endorsed_mip_identifier**,
+  **endorsed_public_key_fingerprint**: as in the endorsement document. Together they name
+  the endorsement being withdrawn.
+- **issued_at**: when the revocation was issued. A revocation has no `expires_at`; it does
+  not expire.
+
+The document is serialized, signed, and transmitted exactly as an endorsement document is;
+see [Endorsement Document](#endorsement-document) and
+[Issuing an Endorsement](#issuing-an-endorsement). Wherever a revocation travels, at the
+Endorsement Revoked endpoint or in a Shared Nodes batch, it takes this form:
+
+```json
+{
+  "endorser_mip_identifier": "512ef14957203c6323e79937f3935708",
+  "endorsed_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
+  "endorsed_public_key_fingerprint": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "revocation_document": "{\"type\":\"MIP_ENDORSEMENT_REVOCATION_V2\",\"endorser_mip_identifier\":\"512ef14957203c6323e79937f3935708\",\"endorsed_mip_identifier\":\"e82d40e9416304e8c72790b45b27a8e6\",\"endorsed_public_key_fingerprint\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"issued_at\":\"2026-11-02T09:00:00Z\"}",
+  "revocation_signature": "k9PZlQ2c0R7v+M4xWb1nJ6yTgE8sHf3aLu5dVq0pXo2i...",
+  "issued_at": "2026-11-02T09:00:00Z"
+}
+```
+
+The copied fields MUST equal the values in the document, as for an endorsement.
+`revocation_signature` is the endorser's signature over `revocation_document`, made as an
+endorsement signature is. A revocation carries no identifier of its own: it is named by its
+endorser, endorsed node, fingerprint, and `issued_at`, all inside the signed document, and
+two revocations with the same four are the same revocation.
+
 ### Endorsement Verification
 
 To verify an endorsement a receiver:
@@ -2017,6 +2160,12 @@ An endorsement that passes every step is **verified**. One that fails step 1 or 
 can never verify later. One that reaches step 4 and fails any step from there on is
 **rejected**.
 
+A revocation is verified by the same steps, applied to `revocation_document` and
+`revocation_signature`, with `MIP_ENDORSEMENT_REVOCATION_V2` as the type in step 1, the
+copied fields compared in step 2, and step 5 omitted, since a revocation has no `expires_at`.
+It has the same three outcomes: verified, unverified when the endorser is not an `ACTIVE`
+connection, and rejected.
+
 Because step 3 requires an `ACTIVE` connection, an endorser whose connection is later revoked
 stops verifying without any further rule: its endorsements become unverified on the node that
 revoked it, and no longer count for anything there.
@@ -2028,19 +2177,34 @@ A node MUST issue `MIP_ENDORSEMENT_V2`.
 
 ### Endorsement Storage
 
-A stored endorsement is in one of two states, **verified** or **unverified**, as determined
-above. A receiver stores verified endorsements, and stores unverified ones so that they can be
-verified later, when the endorser becomes an `ACTIVE` connection. At that moment each
-unverified endorsement from that endorser is verified; those that pass become verified and
-those that fail are deleted. A rejected endorsement MUST NOT be stored.
+A stored endorsement is in one of three states, **verified**, **unverified**, or
+**revoked**. Verified and unverified are as determined above; revoked is the result of a
+verified revocation under the ordering rule below. A receiver stores verified endorsements
+and revocations, and stores unverified ones so that they can be verified later, when the
+endorser becomes an `ACTIVE` connection. At that moment each unverified endorsement and
+revocation from that endorser is verified; those that pass become verified and those that
+fail are deleted. A rejected endorsement or revocation MUST NOT be stored.
 
-Endorsements are keyed by the pair (endorser, endorsed node). Storing a newly received
-endorsement MUST NOT let an unverified endorsement replace a verified one for the same pair,
-and MUST NOT clear a revocation the receiver has recorded against that pair. Otherwise any
-connected node could, by sending a bad endorsement in a third party's name, erase a good one.
+Endorsements and revocations are keyed by the triple (endorser, endorsed node, fingerprint).
+For each triple the verified document with the latest `issued_at` decides, whether it is an
+endorsement or a revocation. A revocation issued after the stored endorsement marks it
+revoked. An endorsement issued after the stored revocation reinstates it, since it is a fresh
+decision by a person at the endorser. A document arriving with an older `issued_at` than the
+one held changes nothing, whichever kind it is. On an equal `issued_at` the revocation wins,
+since refusing trust is the safe side. Both documents are issued by the same node, so the
+comparison never crosses clocks; and `issued_at` is inside the signature, so no node but the
+endorser can set it, and the endorser is the authority on its own vouching. A revocation
+received for an endorsement the receiver does not hold is stored, so that a copy of that
+endorsement arriving later with an earlier `issued_at` changes nothing.
 
-Only verified endorsements count toward automatic approval, and only verified endorsements are
-relayed through Shared Nodes.
+Only verified documents take part in that ordering. Storing a newly received document MUST
+NOT let an unverified endorsement replace a verified endorsement or a verified revocation for
+the same triple. Otherwise any connected node could, by sending a bad endorsement in a third
+party's name, erase a good one or undo a withdrawal.
+
+Only verified endorsements count toward automatic approval, and only verified endorsements
+and revocations are relayed through Shared Nodes. A revoked endorsement counts for nothing
+and is not relayed; the revocation is relayed in its place.
 
 ### Web of Trust
 
@@ -2057,9 +2221,13 @@ Within that model each node decides for itself:
 - whether to attempt connections to nodes it learns of through Shared Nodes, and on what
   conditions.
 
-Endorsements expire and are renewed by issuing a new one to the Endorsements endpoint. A node
-that revokes a connection ceases to verify that node's endorsements, as described under
-Endorsement Verification.
+Endorsements expire and are renewed by issuing a new one to the Endorsements endpoint. An
+endorsement is withdrawn before it expires by an Endorsement Revoked, and the withdrawal
+travels the same single hop as the trust did: a node acts on a revocation only when it
+verified the endorser's signature itself, with a key it holds through its own `ACTIVE`
+connection. A node that revokes a connection ceases to verify that node's endorsements, as
+described under Endorsement Verification, but revokes none of its own by doing so; that is a
+separate step.
 
 # MIP 2.1 Proposed Ideas
 
