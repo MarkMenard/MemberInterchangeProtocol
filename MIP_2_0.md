@@ -258,7 +258,10 @@ Errors are listed in `meta.errors`. Each error has a `code` from the catalog bel
 `message` for a person to read. Clients MUST NOT parse `message`. An error that concerns one
 field of the request adds `field`, naming it. A `connection_state_invalid` error adds
 `status`, the receiver's current status of the connection; see
-[Notification Delivery](#notification-delivery).
+[Notification Delivery](#notification-delivery). A `connection_mismatch` error means the
+sender is not the node entitled to send that request on that connection: a reply from a
+connection other than the one that made the request, or a connection notification from the
+wrong side of the connection.
 
 ```json
 {
@@ -444,6 +447,11 @@ that record held before, and if it had blocked the receiving node it SHOULD clea
 block; see Repeated Requests. A node that asks for a connection has, by asking, withdrawn
 any objection of its own to it.
 
+A node records, with the connection, that it is the node that asked. Every node knows this
+without being told, since it either sent the Connection Request or received it, and the
+connection notifications depend on it: a Connection Approved or Connection Declined is
+accepted only by the node that asked; see [Connection Approved](#connection-approved).
+
 #### Processing a Connection Request
 
 The receiver MUST check, in this order, before storing anything:
@@ -535,6 +543,17 @@ objection by asking; the receiver withdraws its own by approving, and the approv
 the record in full. A node that revoked a connection and wants it back sends a Connection
 Request like any other node.
 
+Reopening assigns the roles afresh. The node that sends the reopening request is the one
+that asked, whichever node made the original request, and the person at the receiving node
+decides. The reopened record is moved on by a Connection Approved or Connection Declined
+from the receiving node only; one from the node that asked is refused, as specified under
+[Connection Approved](#connection-approved).
+
+Two nodes MAY request a connection from each other at the same time. Each then holds one
+record for the other, and each has asked, so each accepts a Connection Approved from the
+other. The first to arrive makes the record `ACTIVE` and the second is answered `200` with
+nothing changed.
+
 A node MAY block a node whose connection it holds as `DECLINED` or `REVOKED`. A block is a
 mark a person sets on the connection, normally when declining or revoking it, and it is
 never sent: `BLOCKED` is not a status, and a blocked node is told only that the connection
@@ -569,8 +588,11 @@ rules keep them in agreement without background retries, queues, or locks on eit
   the notification did not go through and may try again later. There is no automatic retry.
   A node MUST let a person re-send any notification. A re-send is a fresh request with its
   own timestamp and signature; it is not a replay.
-- **The receiver is idempotent.** Each notification names a source state and a target
-  state. A record in the source state moves to the target state. A record already in the
+- **The receiver is idempotent, and it checks who is asking.** A Connection Approved or
+  Connection Declined is accepted only by the node that asked for the connection, and only
+  from the other node; one from the wrong side is answered `403` `connection_mismatch` and
+  changes nothing, whatever state the record is in. Each notification then names a source
+  state and a target state. A record in the source state moves to the target state. A record already in the
   target state is answered `200` with that status and nothing changes. A record in neither
   state is answered `409` `connection_state_invalid`. The endpoint sections give the two
   states for each notification.
@@ -688,6 +710,14 @@ None. The receiving node is identified by its `mip_url`.
 
 - **data.mip_connection.status**: `ACTIVE`.
 
+A node accepts a Connection Approved only for a connection it asked for: one where it sent
+the Connection Request that put the record in `PENDING` or `REOPENED`, or found it there. A
+node MUST NOT accept a Connection Approved from a node that requested the connection from
+it, unless it has also requested the connection from that node. A Connection Approved from
+any other sender is answered `403` `connection_mismatch` and changes nothing, whatever state
+the record is in; this check comes before the state check below. Without it a requester
+could approve its own request, and manual approval is the check on a requester's identity.
+
 The source state is `PENDING` or `REOPENED` and the target state is `ACTIVE`; see
 [Notification Delivery](#notification-delivery). Such a record is marked `ACTIVE`, and
 the receiver records `authentication_type`, `daily_rate_limit`, and `share_my_organization`,
@@ -745,6 +775,11 @@ None. The receiving node is identified by its `mip_url`.
 ```
 
 - **data.mip_connection.status**: `DECLINED`.
+
+A node accepts a Connection Declined under the same rule as a Connection Approved: only for
+a connection it asked for, and only from the other node. One from any other sender is
+answered `403` `connection_mismatch` and changes nothing, whatever state the record is in;
+see [Connection Approved](#connection-approved).
 
 The source state is `PENDING` or `REOPENED` and the target state is `DECLINED`; see
 [Notification Delivery](#notification-delivery). Such a record is marked `DECLINED` and
