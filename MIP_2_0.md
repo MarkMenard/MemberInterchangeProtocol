@@ -633,7 +633,12 @@ re-send a Connection Approved that fails. A node SHOULD retry that one notificat
 background, with backoff and for a bounded period, and tell a person if it still fails. The
 rules above make this safe: the record changes only on `200`; a retry that finds the record
 already `ACTIVE` is answered `200`; and one that finds it in any other state, because a
-person acted in the meantime, is answered `409` and dropped. A Connection Revoked is not
+person acted in the meantime, is answered `409` and dropped. A person MAY still act on the
+request while the retry is pending. A manual decline cancels the retry, since otherwise a
+retry landing first would make the requester `ACTIVE` and the decline would fail. A manual
+approval need not: `MANUAL` supersedes `ENDORSEMENT` on both nodes (see
+[authentication_type](#connection-attributes)), so whichever of the two approvals lands
+first, both nodes end holding `MANUAL`. A Connection Revoked is not
 retried in the background: a revocation sent by mistake that then failed to deliver would
 keep trying with no way for the person to stop it, and the rules above bring the records
 into agreement without a retry.
@@ -749,9 +754,14 @@ The source state is `PENDING` or `REOPENED` and the target state is `ACTIVE`; se
 the receiver records `authentication_type`, `daily_rate_limit`, and `share_my_organization`,
 stores the approver's `gdpr_metadata`, and stores the endorsement, when present, as
 specified under [Endorsement](#endorsement). A record already `ACTIVE` is answered `200`
-with status `ACTIVE` and nothing changes, the endorsement included; an approver that wants
-its endorsement stored after such a reply sends it to [Endorsements](#endorsements). Any
-other state is answered `409` `connection_state_invalid`.
+with status `ACTIVE`, and with one exception nothing changes, the endorsement included. The
+exception is an upgrade: a record held as `ENDORSEMENT` that receives an approval carrying
+`MANUAL` takes the new `authentication_type`, `daily_rate_limit`, and
+`share_my_organization`, and stores the endorsement, since a person has now vouched for a
+connection the web of trust made. `MANUAL` supersedes `ENDORSEMENT` and nothing supersedes
+`MANUAL`; see [authentication_type](#connection-attributes). An upgrade moves nothing, so it
+triggers no discovery push and the requester issues no second endorsement. Any other state
+is answered `409` `connection_state_invalid`.
 
 After approving, the approver pushes its known nodes to the newly approved node and announces
 the newly approved node to its other sharing connections, both through
@@ -1157,7 +1167,10 @@ protocol are such decisions, and a third is open at any time:
   node sent on its own initiative, without a person, earns no endorsement.
 - **At any later time.** Either organization MAY decide to endorse an existing `ACTIVE`
   connection whenever it chooses, by sending its endorsement here. This is also how an
-  endorsement is renewed before it expires.
+  endorsement is renewed before it expires. An approver that wants to vouch for a connection
+  the web of trust made sends a Connection Approved carrying `MANUAL` instead, which upgrades
+  the connection and delivers the endorsement in one step; see
+  [Connection Approved](#connection-approved).
 
 An approval by endorsement is not an endorsement decision. The connection it creates is as
 valid as any other, but the approving organization has not itself vouched for anyone; it
@@ -1805,7 +1818,10 @@ attributes of the connection itself, under `data.mip_connection`:
 - **authentication_type**: how the connection came to be approved: `MANUAL` when a person
   approved it, `ENDORSEMENT` when it was approved by the web of trust. `null` while the
   connection is `PENDING`, `REOPENED`, or `DECLINED`; a `REVOKED` connection keeps the value
-  it had before revocation, which is `null` if it was never `ACTIVE`.
+  it had before revocation, which is `null` if it was never `ACTIVE`. `MANUAL` supersedes
+  `ENDORSEMENT` and nothing supersedes `MANUAL`, on whichever node holds the value: a
+  connection approved by endorsement becomes `MANUAL` when a person at the approver later
+  approves it, and never goes back, whatever order the two approvals arrive in.
 - **daily_rate_limit**: the number of requests per day the responding node accepts from this
   connection.
 - **share_my_organization**: whether the node receiving the response may tell other nodes
