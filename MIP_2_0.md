@@ -1,7 +1,7 @@
 # Member Interchange Protocol 2.0
 
 **Lead author:** Mark Menard (Groupable)
-**Date:** September 14, 2026
+**Date:** September 18, 2026
 **Status:** Current specification. Supersedes MIP 1.0. The differences from 1.0, with the
 reason for each, are listed in `CHANGES.md`.
 
@@ -159,13 +159,16 @@ The following headers are REQUIRED on every request:
   `environment_mismatch` when the value differs from its own environment. This header is not
   part of the signed document.
 
-The following header is REQUIRED on a Connection Request and on a Connection Declined, and
-MUST NOT be sent on any other request:
+The following header is REQUIRED on a Connection Request and MUST NOT be sent on any other
+request:
 
 - `X-MIP-PUBLIC-KEY`: the sender's RSA public key, PEM encoded and then Base64 encoded
-  without line breaks. A receiver uses it only on a Connection Request, where it holds no
-  key for the sender yet. On every other request the receiver verifies the signature with the
-  key it already holds for the sender.
+  without line breaks. It is the one request on which the receiver holds no key for the
+  sender yet. On every other request, a Connection Declined included, the receiver verifies
+  the signature with the key it already holds for the sender: the requester holds the
+  responder's key from the Connection Request response. A requester that holds no record,
+  because that response was lost, answers a Declined `401` `sender_unknown` and recovers by
+  re-sending its request.
 
 ## Signatures
 
@@ -427,11 +430,10 @@ None. The receiving node is identified by its `mip_url`.
   `PENDING` when it awaits a person's approval, or `ACTIVE` when it was approved on the spot
   by endorsement. A request that repeats an existing connection is answered with that
   connection's current status; see Repeated Requests.
-- **data.mip_connection.authentication_type**: `null` while the connection is `PENDING`;
-  `ENDORSEMENT` when this request was approved on the spot by endorsement; when an existing
-  connection is echoed, whatever value it has: `null` while `PENDING`, `REOPENED`, or
-  `DECLINED`, otherwise `MANUAL` or `ENDORSEMENT`. See
-  [authentication_type](#connection-attributes).
+- **data.mip_connection.authentication_type**: `ENDORSEMENT` when this request was approved
+  on the spot by endorsement; otherwise the value the connection has, as specified under
+  [authentication_type](#connection-attributes), which is `null` for a new request that
+  awaits a person.
 - **data.mip_connection.daily_rate_limit**: the number of requests per day the receiving
   node will accept from this connection.
 - **data.mip_connection.share_my_organization**: whether the requester may tell other nodes
@@ -533,10 +535,13 @@ the status:
   answers `REOPENED`. If the receiver has blocked the requester, nothing changes and the
   response reports `REVOKED`.
 
-A `REOPENED` record is approved or declined only by a person. The receiver refreshes the
-stored profile and `gdpr_metadata` from the request and stores the presented endorsements,
-but MUST NOT evaluate them for automatic approval, and a `REOPENED` record MUST NOT be
-completed later by an endorsement either. A person declined or revoked this connection, and
+A `REOPENED` record is approved or declined only by a person. The request that reopens the
+record refreshes the stored profile and `gdpr_metadata` and stores the presented
+endorsements, since a record that was `DECLINED` or `REVOKED` has had no other way to be
+brought current before a person looks at it; every other repeat changes nothing, so that a
+request sent only to ask what the other side holds has no side effects. The receiver MUST
+NOT evaluate the presented endorsements for automatic approval, and a `REOPENED` record MUST
+NOT be completed later by an endorsement either. A person declined or revoked this connection, and
 the web of trust does not overrule a person. In every other respect `REOPENED` is
 `PENDING`: the same notifications move it on, and `authentication_type` is `null` while it
 lasts. It is a status of its own so that the rule is carried on the wire, where the
