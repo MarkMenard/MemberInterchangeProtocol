@@ -44,6 +44,8 @@ defines how nodes exchange information, not what an organization does with it on
 - **Connection Revoked**: notify a node that the sender has revoked the connection, whatever
   its state, and will honor no further requests. A revoked connection comes back through a
   new Connection Request.
+- **Connection Status**: ask a node what it holds for the connection between the two, in any
+  state, without changing anything.
 - **Organization Update**: push updated organization information to a connected node and
   receive its current information in return.
 - **Shared Nodes**: tell a connected node about other nodes, with any endorsements held for
@@ -319,8 +321,9 @@ for the first fault found.
 5. **Authorization** (`403`): the sender's environment matches the receiver's, and the
    connection between them is `ACTIVE`. The following endpoints are exempt from the `ACTIVE`
    check because the connection is, or may be, in another state when they are called:
-   Connection Request, Connection Approved, Connection Declined, Connection Revoked, and
-   Endorsement Revoked. Connection Revoked is exempt because it is accepted from any state;
+   Connection Request, Connection Approved, Connection Declined, Connection Revoked,
+   Connection Status, and Endorsement Revoked. Connection Revoked is exempt because it is
+   accepted from any state; Connection Status because its purpose is to ask in any state;
    see [Connection Revoked](#connection-revoked). Endorsement Revoked is exempt because the
    endorsed node is told even after its connection with the endorser has ended; a revocation
    concerning any other node is refused from a sender that is not `ACTIVE` as an endpoint
@@ -464,8 +467,11 @@ the block; see Repeated Requests. A node that asks for a connection has, by aski
 withdrawn any objection of its own to it.
 
 A node records two facts with the connection: whether it asked, and whether it was asked. It
-asked when its own Connection Request was answered `200` with a status other than `DECLINED`
-or `REVOKED`; it was asked when it received one. Both may be true, when two requests cross.
+asked when its own Connection Request was answered `200` with `PENDING`, `REOPENED`, or
+`ACTIVE`; it was asked when it received one that created or reopened the record. A request
+that creates or reopens a record sets these facts afresh and discards any earlier ones on
+that record, so that a role from an earlier round of the same connection never carries over.
+Both may be true, when two requests cross.
 Every node knows these without being told, and the connection notifications depend on them:
 a Connection Approved or Connection Declined is accepted only by a node that asked; see
 [Connection Approved](#connection-approved).
@@ -533,25 +539,27 @@ made (see [Endorsements](#endorsements)).
 
 #### Repeated Requests
 
-A Connection Request is a request, never a query. When the receiver already holds a
-connection for the requester's `mip_identifier` it MUST NOT create a second record, and what
-it does depends on the status it holds and on which node asked:
+A Connection Request is a request, never a query; a node that wants to know what the other
+side holds sends a [Connection Status](#connection-status). What the receiver does with a
+Connection Request depends on the connection it holds for the requesting node. It MUST NOT
+create a second record for a node it already holds a connection for.
 
-- From the node that asked, whatever the status: the request is idempotent. The receiver
-  answers `200` with the connection's current status and nothing changes. This is how a node
-  whose Connection Request response was lost recovers it, and it is safe because the sender is
-  already the node that asked.
-- From the node that did not ask, on `DECLINED`: the receiver marks the same record
+- **No connection.** The receiver holds no connection for the requesting node, whatever it
+  may know of that node through discovery. It creates one, `PENDING` or `ACTIVE` by
+  endorsement, as specified above, and answers `200`.
+- **`DECLINED` or `REVOKED`, from either node.** The receiver marks the same record
   `REOPENED`, presents it to a person, and answers `200` `REOPENED`. If the receiver has
-  blocked the requester, nothing changes and the response reports `DECLINED`.
-- From the node that did not ask, on `REVOKED`: likewise, `REOPENED`, or `REVOKED` if the
-  requester is blocked.
-- From the node that did not ask, on `PENDING`, `REOPENED`, or `ACTIVE`: the request is
-  answered `409` `connection_state_invalid` carrying that status, and nothing changes. The
-  receiver's own request is the one waiting on that node, or the connection is already made.
-  The sender tells its person that the other node has already asked, or that the connection
-  is active, and that the decision, if there is one, is theirs to make on the request they
-  hold.
+  blocked the requester, nothing changes and the response reports the current status. These
+  two statuses are where a connection process restarts, and either node may restart it.
+- **`PENDING`, `REOPENED`, or `ACTIVE`.** From the node that asked, the request is an
+  idempotent retry: the receiver answers `200` with the connection's current status and
+  nothing changes. This is how a node whose Connection Request response was lost recovers it,
+  and it is safe because the sender is already the node that asked. From the node that did not
+  ask, the request is answered `409` `connection_state_invalid` carrying that status, and
+  nothing changes: the receiver's own request is the one waiting on that node, or the
+  connection is already made. The sender tells its person that the other node has already
+  asked, or that the connection is active, and that the decision, if there is one, is theirs
+  to make on the request they hold.
 
 A `REOPENED` record is approved or declined only by a person. The request that reopens the
 record refreshes the stored profile and `gdpr_metadata` and stores the presented
@@ -571,9 +579,9 @@ objection by asking; the receiver withdraws its own by approving, and the approv
 the record in full. A node that revoked a connection and wants it back sends a Connection
 Request like any other node.
 
-Reopening assigns the roles afresh. The node that sends the reopening request is the one
-that asked, whichever node made the original request, and the person at the receiving node
-decides. The reopened record is moved on by a Connection Approved or Connection Declined
+Reopening assigns the roles afresh and discards the old ones. The node that sends the
+reopening request is the one that asked, whichever node made the original request, and the
+person at the receiving node decides. The reopened record is moved on by a Connection Approved or Connection Declined
 from the receiving node only; one from the node that asked is refused, as specified under
 [Connection Approved](#connection-approved).
 
@@ -605,8 +613,9 @@ a node's key is outside the scope of this version of the protocol; a node that r
 key after a connection is declined or revoked cannot reopen it in 2.0, and that is left for
 2.1 (see [Key Rotation](#key-rotation)).
 
-A node that did not ask learns what the other side holds from the `status` a `409` or a
-`403` `connection_not_active` carries, not by sending a Connection Request; see
+A node that wants to know what the other side holds sends a
+[Connection Status](#connection-status), which changes nothing on either side's roles. It
+also learns from the `status` a `409` or a `403` `connection_not_active` carries; see
 [Notification Delivery](#notification-delivery).
 
 ### Notification Delivery
@@ -650,10 +659,11 @@ rules keep them in agreement without background retries, queues, or locks on eit
   revocation learns `REVOKED` on its next ordinary request without reopening anything. The
   two errors are treated differently because a `409` answers an action a person is in the
   middle of, so the person sees the conflict and chooses, while a `403` answers a routine
-  request with no one mid-action, so the node may simply catch up. The node that asked has
-  one more way to learn: its own Connection Request is idempotent, and a re-send is answered
-  with the current state; see Repeated Requests under
-  [Connection Request](#connection-request).
+  request with no one mid-action, so the node may simply catch up. Any node may also ask
+  outright with a [Connection Status](#connection-status), which is recorded the same way
+  and changes nothing on the receiver. The node that asked has one more: its own Connection
+  Request is an idempotent retry, answered with the current state; see Repeated Requests
+  under [Connection Request](#connection-request).
 
 One retry is RECOMMENDED, and only one. When a pending request is approved by an endorsement that arrives
 later (see [Late Automatic Approval](#late-automatic-approval)), no person is at hand to
@@ -935,6 +945,85 @@ endorsement, on either side. An endorsement is withdrawn by a separate step, an
 [Endorsement Revoked](#endorsement-revoked), which reaches the nodes that hold it. A system
 MAY offer a person both in one act; they are two actions on the wire.
 
+### Connection Status
+
+Ask a node what it holds for the connection between the two. A node uses this to learn the
+other side's view after a failed or doubtful exchange, or at any time, without asking for
+anything and without changing anything.
+
+#### Endpoint: `<mip_url>/mip_connections/status`
+
+#### Arguments
+
+None. The receiving node is identified by its `mip_url`.
+
+#### HTTP Action: POST
+
+#### Payload Format: JSON
+
+#### Request Payload
+
+```json
+{}
+```
+
+The request has no fields. The connection asked about is the one between the receiver and
+the authenticated sender.
+
+#### Response Payload
+
+```json
+{
+  "meta": {
+    "succeeded": true
+  },
+  "data": {
+    "mip_connection": {
+      "status": "REVOKED",
+      "authentication_type": "MANUAL",
+      "daily_rate_limit": 100,
+      "share_my_organization": true,
+      "node_profile": {
+        "mip_identifier": "512ef14957203c6323e79937f3935708",
+        "mip_url": "https://mip.example.org/api/mip/node/512ef14957203c6323e79937f3935708",
+        "organization_legal_name": "Grand Lodge of Elsewhere",
+        "contact_person": "Mary Jones",
+        "contact_phone": "+1-555-987-6543",
+        "organization_public_website": "https://www.elsewhere.example",
+        "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "gdpr_metadata": {
+          "controller": { "role": "controller", "name": "Grand Lodge of Elsewhere" },
+          "processors": [
+            { "name": "Elsewhere Software Vendor", "role": "processor" }
+          ],
+          "sub_processors": [
+            { "name": "Example Cloud Hosting" }
+          ]
+        }
+      }
+    }
+  }
+}
+```
+
+The response has the same shape as the Connection Request response: the connection's
+`status`, `authentication_type`, `daily_rate_limit`, and `share_my_organization`, and the
+receiving node's own current profile including its `gdpr_metadata`; see
+[Connection Attributes](#connection-attributes).
+
+This endpoint is exempt from the `ACTIVE` check in the Order of Checks, since its purpose is
+to ask in any state, and it is answered from any state the receiver holds, `DECLINED` and
+`REVOKED` included. A blocked node is told `DECLINED` or `REVOKED` like any other; the block
+is never disclosed. A sender the receiver holds no connection for is answered `401`
+`sender_unknown`, as anywhere else. The request changes nothing on the receiver.
+
+The sender MUST record what the response reports, under the same rule as a Connection
+Request response and with the same one exception: a node that has itself approved the
+connection keeps its approval when the response reports `PENDING` or `REOPENED`. The response
+carries no statement of which node asked, and receiving one never makes the sender a node
+that asked. Roles come from a node's own Connection Request being answered, and from nothing
+another node says; see [Connection Request](#connection-request).
+
 ### Organization Update
 
 Push the sending node's current profile to a connected node and receive that node's current
@@ -1107,7 +1196,7 @@ None. The receiving node is identified by its `mip_url`.
 
 A node MAY share a connection only when that connection is `ACTIVE` and the other node set
 `share_my_organization` to `true`, whether in its Connection Request, its Connection
-Approved, or the response to either a Connection Request or an Organization Update. A sender
+Approved, or the response to a Connection Request, Connection Status, or Organization Update. A sender
 MUST NOT share a node that has not permitted it and MUST NOT include the receiver itself in
 the batch.
 
@@ -1847,18 +1936,19 @@ nodes.
 - **public_key**: REQUIRED. The node's RSA public key in PEM format.
 - **gdpr_metadata**: REQUIRED when a node describes itself, which it does in the Connection
   Request, Connection Approved, and Organization Update payloads and in the Connection
-  Request and Organization Update responses. MUST NOT be present in a Shared Nodes element,
+  Request, Connection Status, and Organization Update responses. MUST NOT be present in a
+  Shared Nodes element,
   where the profile describes a third node. See [GDPR Metadata](#gdpr-metadata).
 
 `share_my_organization` is not part of the profile. It is a flag on the Connection Request
-and Connection Approved payloads and a connection attribute in the Connection Request and
-Organization Update responses, because it is a term of the connection rather than a fact
-about the node.
+and Connection Approved payloads and a connection attribute in the Connection Request,
+Connection Status, and Organization Update responses, because it is a term of the connection
+rather than a fact about the node.
 
 ### Connection Attributes
 
-Beside the Node Profile, the Connection Request and Organization Update responses carry four
-attributes of the connection itself, under `data.mip_connection`:
+Beside the Node Profile, the Connection Request, Connection Status, and Organization Update
+responses carry four attributes of the connection itself, under `data.mip_connection`:
 
 - **status**: `PENDING`, `REOPENED`, `ACTIVE`, `DECLINED`, or `REVOKED`. `REOPENED` is a
   request awaiting a person after an earlier decline or revocation; see Repeated Requests
