@@ -1,7 +1,7 @@
 # Member Interchange Protocol 2.0
 
 **Lead author:** Mark Menard (Groupable)
-**Date:** September 18, 2026
+**Date:** September 27, 2026
 **Status:** Current specification. Supersedes MIP 1.0. The differences from 1.0, with the
 reason for each, are listed in `CHANGES.md`.
 
