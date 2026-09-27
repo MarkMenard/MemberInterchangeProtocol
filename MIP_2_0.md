@@ -428,8 +428,9 @@ None. The receiving node is identified by its `mip_url`.
 
 - **data.mip_connection.status**: the connection's current status. A new request is answered
   `PENDING` when it awaits a person's approval, or `ACTIVE` when it was approved on the spot
-  by endorsement. A request that repeats an existing connection is answered with that
-  connection's current status; see Repeated Requests.
+  by endorsement. A repeat from the node that asked is answered with the connection's
+  current status, and a request that reopens a `DECLINED` or `REVOKED` record is answered
+  `REOPENED`; see Repeated Requests.
 - **data.mip_connection.authentication_type**: `ENDORSEMENT` when this request was approved
   on the spot by endorsement; otherwise the value the connection has, as specified under
   [authentication_type](#connection-attributes), which is `null` for a new request that
@@ -448,16 +449,22 @@ specified under [Endorsements](#endorsements), and known nodes are pushed afterw
 
 The requester records the connection from the response: its `status`,
 `authentication_type`, `daily_rate_limit`, and `share_my_organization`, and the receiver's
-profile and `gdpr_metadata`. This applies equally when the request repeats an existing connection. The
-node that sent it MUST bring its own record into line with the status reported, whatever
-that record held before, and if it had blocked the receiving node it SHOULD clear the
-block; see Repeated Requests. A node that asks for a connection has, by asking, withdrawn
-any objection of its own to it.
+profile and `gdpr_metadata`. This applies equally when the request repeats an existing
+connection. The node that sent it MUST bring its own record into line with the status
+reported, whatever that record held before, with one exception: a node that has itself
+approved the connection, and so holds it `ACTIVE`, keeps its approval when the response
+reports `PENDING` or `REOPENED`, which arises only when two requests cross (see Repeated
+Requests). When a response makes a record `ACTIVE`, any request the node had been presented
+on that record is concluded. If the sender had blocked the receiving node it SHOULD clear
+the block; see Repeated Requests. A node that asks for a connection has, by asking,
+withdrawn any objection of its own to it.
 
-A node records, with the connection, that it is the node that asked. Every node knows this
-without being told, since it either sent the Connection Request or received it, and the
-connection notifications depend on it: a Connection Approved or Connection Declined is
-accepted only by the node that asked; see [Connection Approved](#connection-approved).
+A node records two facts with the connection: whether it asked, and whether it was asked. It
+asked when its own Connection Request was answered `200` with a status other than `DECLINED`
+or `REVOKED`; it was asked when it received one. Both may be true, when two requests cross.
+Every node knows these without being told, and the connection notifications depend on them:
+a Connection Approved or Connection Declined is accepted only by a node that asked; see
+[Connection Approved](#connection-approved).
 
 #### Processing a Connection Request
 
@@ -522,24 +529,31 @@ made (see [Endorsements](#endorsements)).
 
 #### Repeated Requests
 
-A connection request is idempotent per requesting identifier. When the receiver already
-holds a connection for the requester's `mip_identifier` it MUST answer `200` with that
-connection's current status and MUST NOT create a second record. What else happens depends on
-the status:
+A Connection Request is a request, never a query. When the receiver already holds a
+connection for the requester's `mip_identifier` it MUST NOT create a second record, and what
+it does depends on the status it holds and on which node asked:
 
-- `PENDING`, `REOPENED`, or `ACTIVE`: nothing changes.
-- `DECLINED`: the receiver marks the same record `REOPENED`, presents it to a person, and
-  answers `REOPENED`. If the receiver has blocked the requester, nothing changes and the
-  response reports `DECLINED`.
-- `REVOKED`: the receiver marks the same record `REOPENED`, presents it to a person, and
-  answers `REOPENED`. If the receiver has blocked the requester, nothing changes and the
-  response reports `REVOKED`.
+- From the node that asked, whatever the status: the request is idempotent. The receiver
+  answers `200` with the connection's current status and nothing changes. This is how a node
+  whose Connection Request response was lost recovers it, and it is safe because the sender is
+  already the node that asked.
+- From the node that did not ask, on `DECLINED`: the receiver marks the same record
+  `REOPENED`, presents it to a person, and answers `200` `REOPENED`. If the receiver has
+  blocked the requester, nothing changes and the response reports `DECLINED`.
+- From the node that did not ask, on `REVOKED`: likewise, `REOPENED`, or `REVOKED` if the
+  requester is blocked.
+- From the node that did not ask, on `PENDING`, `REOPENED`, or `ACTIVE`: the request is
+  answered `409` `connection_state_invalid` carrying that status, and nothing changes. The
+  receiver's own request is the one waiting on that node, or the connection is already made.
+  The sender tells its person that the other node has already asked, or that the connection
+  is active, and that the decision, if there is one, is theirs to make on the request they
+  hold.
 
 A `REOPENED` record is approved or declined only by a person. The request that reopens the
 record refreshes the stored profile and `gdpr_metadata` and stores the presented
 endorsements, since a record that was `DECLINED` or `REVOKED` has had no other way to be
-brought current before a person looks at it; every other repeat changes nothing, so that a
-request sent only to ask what the other side holds has no side effects. The receiver MUST
+brought current before a person looks at it; a repeat from the node that asked changes
+nothing. The receiver MUST
 NOT evaluate the presented endorsements for automatic approval, and a `REOPENED` record MUST
 NOT be completed later by an endorsement either. A person declined or revoked this connection, and
 the web of trust does not overrule a person. In every other respect `REOPENED` is
@@ -559,10 +573,18 @@ decides. The reopened record is moved on by a Connection Approved or Connection 
 from the receiving node only; one from the node that asked is refused, as specified under
 [Connection Approved](#connection-approved).
 
-Two nodes MAY request a connection from each other at the same time. Each then holds one
-record for the other, and each has asked, so each accepts a Connection Approved from the
-other. The first to arrive makes the record `ACTIVE` and the second is answered `200` with
-nothing changed.
+Two nodes MAY request a connection from each other at the same time, each request reaching
+the other node before its own response returns. Each receiver then holds nothing, creates
+the record, and marks that it was asked; when its own response returns, each marks that it
+asked as well. Both facts are true of both records, each person sees a request from the
+other, and each node accepts a Connection Approved from the other. The first to arrive
+makes the record `ACTIVE`; the second is answered `200` with nothing changed. If one node
+approved on the spot by endorsement, its record is `ACTIVE` before its own response returns,
+and that response, which may report `PENDING`, does not regress it: a node that has itself
+approved a connection keeps its approval, and a response that makes the other node's record
+`ACTIVE` concludes the request it had been presented. When the requests do not cross, and
+one arrives after the other was answered, it is the `409` case above, and the person is
+told to decide the request they hold.
 
 A node MAY block a node whose connection it holds as `DECLINED` or `REVOKED`. A block is a
 mark a person sets on the connection, normally when declining or revoking it, and it is
@@ -579,17 +601,15 @@ a node's key is outside the scope of this version of the protocol; a node that r
 key after a connection is declined or revoked cannot reopen it in 2.0, and that is left for
 2.1 (see [Key Rotation](#key-rotation)).
 
-Because the answer is the receiver's current status, a repeated request is also how a node
-learns what the other side holds after a failed or doubtful exchange; see
-[Notification Delivery](#notification-delivery). This applies whichever node made the
-original request. A repeated request to a `DECLINED` or `REVOKED` record reopens it, as
-above.
+A node that did not ask learns what the other side holds from the `status` a `409` or a
+`403` `connection_not_active` carries, not by sending a Connection Request; see
+[Notification Delivery](#notification-delivery).
 
 ### Notification Delivery
 
 Connection Approved, Connection Declined, and Connection Revoked each tell the other node
 that the sender has changed the connection. Each is one request with one
-answer, and the two nodes agree about the connection only once that answer has arrived. Five
+answer, and the two nodes agree about the connection only once that answer has arrived. Four
 rules keep them in agreement without background retries, queues, or locks on either side.
 
 - **The sender changes its record on `200` and not before, except when it revokes.** A node
@@ -623,14 +643,10 @@ rules keep them in agreement without background retries, queues, or locks on eit
   revocation learns `REVOKED` on its next ordinary request without reopening anything. The
   two errors are treated differently because a `409` answers an action a person is in the
   middle of, so the person sees the conflict and chooses, while a `403` answers a routine
-  request with no one mid-action, so the node may simply catch up.
-- **Either node can ask.** A Connection Request to a node that already holds the connection
-  is answered with that node's current status, whichever node made the original request,
-  and changes nothing there unless the record is `DECLINED` or `REVOKED` and the sender is
-  not blocked, in which case it is reopened; see Repeated Requests under
-  [Connection Request](#connection-request). A node sends one to learn what the other side
-  holds, and MUST record the status reported, since the answering node is the one whose
-  approval or refusal counts and the response carries everything an approval carries.
+  request with no one mid-action, so the node may simply catch up. The node that asked has
+  one more way to learn: its own Connection Request is idempotent, and a re-send is answered
+  with the current state; see Repeated Requests under
+  [Connection Request](#connection-request).
 
 One retry is RECOMMENDED, and only one. When a pending request is approved by an endorsement that arrives
 later (see [Late Automatic Approval](#late-automatic-approval)), no person is at hand to
@@ -746,8 +762,9 @@ None. The receiving node is identified by its `mip_url`.
 
 - **data.mip_connection.status**: `ACTIVE`.
 
-A node accepts a Connection Approved only for a connection it asked for: one where it sent
-the Connection Request that put the record in `PENDING` or `REOPENED`, or found it there. A
+A node accepts a Connection Approved only for a connection it asked for: one where its own
+Connection Request was answered `200` with a status other than `DECLINED` or `REVOKED`, as
+recorded under [Connection Request](#connection-request). A
 node MUST NOT accept a Connection Approved from a node that requested the connection from
 it, unless it has also requested the connection from that node. A Connection Approved from
 any other sender is answered `403` `connection_mismatch` and changes nothing, whatever state
