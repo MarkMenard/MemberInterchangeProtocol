@@ -166,9 +166,10 @@ request:
   without line breaks. It is the one request on which the receiver holds no key for the
   sender yet. On every other request, a Connection Declined included, the receiver verifies
   the signature with the key it already holds for the sender: the requester holds the
-  responder's key from the Connection Request response. A requester that holds no record,
-  because that response was lost, answers a Declined `401` `sender_unknown` and recovers by
-  re-sending its request.
+  responder's key from the Connection Request response. A requester that holds no key for
+  the responder, because that response was lost, answers any request from the responder
+  `401` `sender_unknown` and recovers by re-sending its request. A receiver ignores this
+  header on any request but a Connection Request.
 
 ## Signatures
 
@@ -627,7 +628,10 @@ rules keep them in agreement without background retries, queues, or locks on eit
 - **The receiver is idempotent, and it checks who is asking.** A Connection Approved or
   Connection Declined is accepted only by the node that asked for the connection, and only
   from the other node; one from the wrong side is answered `403` `connection_mismatch` and
-  changes nothing, whatever state the record is in. Each notification then names a source
+  changes nothing, whatever state the record is in. The connection acted on is the
+  authenticated sender's: a `node_profile.mip_identifier` or `mip_identifier` in the payload
+  that differs from the `X-MIP-MIP-IDENTIFIER` header is answered `422` `validation_failed`
+  naming the field, as on a Connection Request. Each notification then names a source
   state and a target state. A record in the source state moves to the target state. A record already in the
   target state is answered `200` with that status and nothing changes. A record in neither
   state is answered `409` `connection_state_invalid`. The endpoint sections give the two
@@ -731,7 +735,8 @@ None. The receiving node is identified by its `mip_url`.
 ```
 
 - **node_profile**: REQUIRED. The approving node's own profile, including its
-  `gdpr_metadata`.
+  `gdpr_metadata`. Its `mip_identifier` MUST equal the `X-MIP-MIP-IDENTIFIER` header;
+  otherwise `422` `validation_failed` naming `mip_identifier`.
 - **share_my_organization**: REQUIRED. Whether the requester may tell other nodes about the
   approver.
 - **daily_rate_limit**: REQUIRED. The number of requests per day the approver will accept
@@ -739,11 +744,13 @@ None. The receiving node is identified by its `mip_url`.
 - **authentication_type**: REQUIRED. `MANUAL` when a person approved the request;
   `ENDORSEMENT` when it was approved by endorsement after having been pending. The receiver
   MUST record the value sent rather than assume one.
-- **endorsement**: present when `authentication_type` is `MANUAL` and absent otherwise. A
-  person approving a connection is vouching for the requester, and the approver's endorsement
-  of the requester is issued at that moment and delivered here. An approval by endorsement
-  issues none; see [Endorsements](#endorsements). When absent the key is omitted, not set to
-  `null`.
+- **endorsement**: REQUIRED when `authentication_type` is `MANUAL` and MUST be absent
+  otherwise. A person approving a connection is vouching for the requester, and the
+  approver's endorsement of the requester is issued at that moment and delivered here. An
+  approval by endorsement issues none; see [Endorsements](#endorsements). When absent the key
+  is omitted, not set to `null`. An approval carrying `MANUAL` without an endorsement, or
+  `ENDORSEMENT` with one, is answered `422` `validation_failed` naming `endorsement`, and
+  nothing changes.
 
 #### Response Payload
 
@@ -814,7 +821,8 @@ None. The receiving node is identified by its `mip_url`.
 }
 ```
 
-- **mip_identifier**: REQUIRED. The declining node's MIP identifier.
+- **mip_identifier**: REQUIRED. The declining node's MIP identifier. It MUST equal the
+  `X-MIP-MIP-IDENTIFIER` header; otherwise `422` `validation_failed` naming it.
 - **reason**: OPTIONAL. An explanation for a person to read.
 
 #### Response Payload
@@ -872,7 +880,8 @@ None. The receiving node is identified by its `mip_url`.
 }
 ```
 
-- **mip_identifier**: REQUIRED. The revoking node's MIP identifier.
+- **mip_identifier**: REQUIRED. The revoking node's MIP identifier. It MUST equal the
+  `X-MIP-MIP-IDENTIFIER` header; otherwise `422` `validation_failed` naming it.
 - **reason**: OPTIONAL. An explanation for a person to read.
 
 #### Response Payload
