@@ -309,7 +309,8 @@ for the first fault found.
    within the receiver's size cap (`request_too_large`).
 2. **Node lookup** (`404`): the identifier in the request path names a node this system
    hosts; otherwise `node_not_found`.
-3. **Authentication** (`401`): the sender is a node the receiver holds a key for, or the
+3. **Authentication** (`401`): the sender is a node the receiver holds a connection for, in
+   any state, or the
    request is a Connection Request carrying `X-MIP-PUBLIC-KEY`; otherwise `sender_unknown`.
    The timestamp is within the receiver's window (`timestamp_out_of_window`), the signature
    is present (`signature_missing`), and it verifies against that key (`signature_invalid`).
@@ -469,9 +470,12 @@ withdrawn any objection of its own to it.
 A node records two facts with the connection: whether it asked, and whether it was asked. It
 asked when its own Connection Request was answered `200` with `PENDING`, `REOPENED`, or
 `ACTIVE`; it was asked when it received one that created or reopened the record. A request
-that creates or reopens a record sets these facts afresh and discards any earlier ones on
-that record, so that a role from an earlier round of the same connection never carries over.
-Both may be true, when two requests cross.
+that creates or reopens a record sets these facts afresh on both nodes and discards any
+earlier ones on that record: the receiver sets was-asked and clears asked when it creates or
+reopens, and the requester sets asked and clears was-asked when its `200` arrives with
+`PENDING`, `REOPENED`, or `ACTIVE` for a record it held as nothing, `DECLINED`, or `REVOKED`.
+A role from an earlier round of the same connection never carries over. Both may be true,
+when two requests cross.
 Every node knows these without being told, and the connection notifications depend on them:
 a Connection Approved or Connection Declined is accepted only by a node that asked; see
 [Connection Approved](#connection-approved).
@@ -491,6 +495,12 @@ The receiver MUST check, in this order, before storing anything:
    `public_key_size_invalid`.
 4. Every REQUIRED field of the Node Profile and of `gdpr_metadata` is present. Otherwise
    `422` `validation_failed` naming the field.
+5. When the receiver already holds a connection for the requester, the presented key is the
+   key it holds. Otherwise `422` `public_key_mismatch` and nothing changes; see Repeated
+   Requests.
+6. When the receiver already holds a connection for the requester, the request is handled as
+   a repeat, including the `409` for a request from the node that did not ask; see Repeated
+   Requests. Otherwise the receiver goes on to create the connection.
 
 The receiver then stores the requester's profile and `gdpr_metadata`, stores the presented
 endorsements as specified under [Endorsement](#endorsement), and evaluates them for
@@ -633,21 +643,25 @@ rules keep them in agreement without background retries, queues, or locks on eit
   acts, whatever the other node then answers, and sends the Connection Revoked afterward: a
   node is not hostage to the node it is revoking. This is safe because Revoked is the one
   notification the receiver never answers `409`, so a re-send can never conflict. A failed
-  Revoked is still reported to the person, who may re-send it. There is no automatic retry
-  of any notification but the one recommended below. A node MUST let a person re-send any
+  Revoked is still reported to the person, who may re-send it. A `403` or a `409` answering an
+  Approved or Declined likewise changes nothing on the sender; the person is shown what the
+  other side holds, and repairs it with the moves below. There is no automatic retry of any
+  notification but the one recommended below. A node MUST let a person re-send any
   notification. A re-send is a fresh request with its own timestamp and signature; it is not
   a replay.
-- **The receiver is idempotent, and it checks who is asking.** A Connection Approved or
-  Connection Declined is accepted only by the node that asked for the connection, and only
-  from the other node; one from the wrong side is answered `403` `connection_mismatch` and
-  changes nothing, whatever state the record is in. The connection acted on is the
-  authenticated sender's: a `node_profile.mip_identifier` or `mip_identifier` in the payload
-  that differs from the `X-MIP-MIP-IDENTIFIER` header is answered `422` `validation_failed`
-  naming the field, as on a Connection Request. Each notification then names a source
-  state and a target state. A record in the source state moves to the target state. A record already in the
-  target state is answered `200` with that status and nothing changes. A record in neither
-  state is answered `409` `connection_state_invalid`. The endpoint sections give the two
-  states for each notification.
+- **The receiver is idempotent, and it checks who is asking.** A receiver runs these checks
+  on a notification, in this order, after the Order of Checks:
+  1. the connection acted on is the authenticated sender's: a `node_profile.mip_identifier`
+     or `mip_identifier` in the payload that differs from the `X-MIP-MIP-IDENTIFIER` header
+     is `422` `validation_failed` naming the field, as on a Connection Request;
+  2. the payload is valid for the notification, as specified under each endpoint (`422`);
+  3. for a Connection Approved or Connection Declined, the receiver is the node that asked
+     for the connection and the sender is the other node; one from the wrong side is `403`
+     `connection_mismatch` and changes nothing, whatever state the record is in;
+  4. the record is in the notification's source state and moves to its target state; a record
+     already in the target state is answered `200` with that status and nothing changes; a
+     record in neither is `409` `connection_state_invalid`.
+  The endpoint sections give the two states for each notification.
 - **A `409` says what the receiver holds.** The `connection_state_invalid` error carries the
   receiver's current status of the connection in `status`, so that the person sees the
   disagreement itself rather than a bare conflict. The sender MUST NOT change its own record
@@ -681,14 +695,18 @@ retried in the background: a revocation sent by mistake that then failed to deli
 keep trying with no way for the person to stop it, and the rules above bring the records
 into agreement without a retry.
 
-These rules are enough because they leave behind only two disagreements. The first is a
+These rules are enough because they leave behind only three disagreements. The first is a
 lost reply: the receiver changed and the sender did not. The sender's record still shows the
 action as not done, so the person takes it again, and the receiver, already in the target
 state, answers `200`. The second is an undelivered revocation: the revoker holds `REVOKED`
-and the other node still holds `ACTIVE`. The revoker sends nothing and answers every request
-from the other node `403` `connection_not_active` carrying `REVOKED`, which that node
-records, so it learns on its next request; a re-sent Revoked, or a Connection Request from
-either node, does the same. A disagreement that arises some other way, such as a record restored from a
+and the other node still holds `ACTIVE`. The revoker sends that node nothing but an
+Endorsement Revoked and answers its ordinary requests `403` `connection_not_active` carrying
+`REVOKED`, which that node records, so it learns on its next request; a re-sent Revoked, or a
+Connection Request from either node, does the same. The third is a lost Connection Request
+response: the receiver created or reopened the record and the requester does not know it,
+so an approval sent meanwhile is refused `403` `connection_mismatch`, or `409` where the
+requester still holds an old role. The requester re-sends its request, which is an idempotent
+retry answered `200`, and the approver re-sends its approval. A disagreement that arises some other way, such as a record restored from a
 backup, is repaired with the same moves a person makes every day: Connection Revoked is
 accepted from any state and resets a connection, and a Connection Request reopens it, so
 that an approval rebuilds the `ACTIVE` record in full. No implementation needs to let anyone
@@ -698,7 +716,8 @@ edit a connection's status by hand, and none should.
 
 Notify a requester that its connection request has been approved. Sent by the approving node
 after a person approves the request, or after a pending request is approved later by an
-endorsement that arrives at [Endorsements](#endorsements).
+endorsement that arrives in a Shared Nodes batch; see
+[Late Automatic Approval](#late-automatic-approval).
 
 #### Endpoint: `<mip_url>/mip_connections/approved`
 
@@ -763,7 +782,9 @@ None. The receiving node is identified by its `mip_url`.
   approval by endorsement issues none; see [Endorsements](#endorsements). When absent the key
   is omitted, not set to `null`. An approval carrying `MANUAL` without an endorsement, or
   `ENDORSEMENT` with one, is answered `422` `validation_failed` naming `endorsement`, and
-  nothing changes.
+  nothing changes; this is the payload check, which runs before the role and state checks
+  under [Notification Delivery](#notification-delivery), so it applies whatever state the
+  record is in.
 
 #### Response Payload
 
@@ -916,8 +937,9 @@ None. The receiving node is identified by its `mip_url`.
 
 The revoking node marks its own record `REVOKED` when the person acts, before sending and
 whatever the response; see [Notification Delivery](#notification-delivery). From that
-moment it sends the revoked node nothing, refuses its requests with `403`
-`connection_not_active` carrying `REVOKED`, and stops verifying its endorsements. Until the
+moment it sends the revoked node nothing but an Endorsement Revoked, refuses its ordinary
+requests with `403` `connection_not_active` carrying `REVOKED` (the exempt endpoints under
+the Order of Checks are still answered), and stops verifying its endorsements. Until the
 notification is delivered the revoked node may still count the revoker's endorsements and
 still list the revoker in Shared Nodes if permitted to; both end when it learns, and neither
 harms the revoker.
@@ -1017,12 +1039,18 @@ to ask in any state, and it is answered from any state the receiver holds, `DECL
 is never disclosed. A sender the receiver holds no connection for is answered `401`
 `sender_unknown`, as anywhere else. The request changes nothing on the receiver.
 
-The sender MUST record what the response reports, under the same rule as a Connection
-Request response and with the same one exception: a node that has itself approved the
-connection keeps its approval when the response reports `PENDING` or `REOPENED`. The response
-carries no statement of which node asked, and receiving one never makes the sender a node
-that asked. Roles come from a node's own Connection Request being answered, and from nothing
-another node says; see [Connection Request](#connection-request).
+The sender records what the response reports under the same rule by which it accepts a
+notification. `REVOKED`, `PENDING`, and `REOPENED` are recorded from either side. `ACTIVE`
+and `DECLINED` are statuses only the other node's person can produce, and the sender MUST
+record them only when it is the node that asked, the condition under which it would accept a
+Connection Approved or Connection Declined from that node; a report it may not record is
+shown to a person and repaired with the ordinary moves. Without this a requester could answer
+the asked node's query `ACTIVE` and be connected without a person approving. The one
+exception carries over from the Connection Request response: a node that has itself approved
+the connection keeps its approval when the response reports `PENDING` or `REOPENED`. The
+response carries no statement of which node asked, and receiving one never makes the sender
+a node that asked. Roles come from a node's own Connection Request being answered, and from
+nothing another node says; see [Connection Request](#connection-request).
 
 ### Organization Update
 
@@ -1123,8 +1151,10 @@ it is used in three situations:
 
 1. After approving a connection, the approver sends the newly approved node every node it may
    share.
-2. After approving a connection, the approver sends each of its other sharing connections the
-   newly approved node, as a batch of one.
+2. After approving a connection, and again whenever it issues or renews an endorsement of a
+   node it may share, the endorser sends each of its other sharing connections that node, as a
+   batch of one carrying the endorsement. This is how one node's vouching reaches the rest of
+   its connections, and keeps reaching them as endorsements are renewed.
 3. In answer to a [Share Request](#share-request), the receiver of that request sends the
    requester every node it may share.
 
@@ -1232,6 +1262,18 @@ endorser's key. Whether the receiver then attempts a connection to a known node,
 conditions, is its own policy. A receiver that automatically requests connections to shared
 nodes SHOULD require that the node carry a verified endorsement from an endorser it trusts.
 
+#### Late Automatic Approval
+
+An endorsement arriving in a Shared Nodes batch can complete a pending connection. When the
+receiver holds a `PENDING` connection request from the endorsed node and a newly verified
+endorsement of that node satisfies its automatic approval policy, the receiver MAY approve
+that connection and send the endorsed node a [Connection Approved](#connection-approved)
+request with `authentication_type` `ENDORSEMENT` and no `endorsement`. A `REOPENED` record
+is not eligible; a person declined or revoked it, and only a person approves it again. See
+Repeated Requests under [Connection Request](#connection-request). This is the one place a
+late approval arises: the Endorsements endpoint carries endorsements of the receiver itself,
+which cannot complete a request from a third node.
+
 ### Share Request
 
 Ask a connected node to send the nodes it may share. The nodes arrive afterward through
@@ -1279,7 +1321,9 @@ at most 20, the same way it does after approving a connection.
 
 ### Endorsements
 
-Send an endorsement of the receiving node's identity, issued by the sending node.
+Send an endorsement of the receiving node's identity, issued by the sending node. This
+endpoint carries endorsements of the receiver only; an endorsement of any other node reaches a
+node inside a Shared Nodes batch or a Connection Request, never here.
 
 Endorsing is a decision made by a person. A node issues an endorsement of a connection only
 when one of its own people has decided to vouch for that node. Two moments in the connection
@@ -1332,8 +1376,11 @@ The payload is an [Endorsement](#endorsement) in the full payload form.
 
 The sending node MUST be the endorser: `endorser_mip_identifier` MUST equal the
 `X-MIP-MIP-IDENTIFIER` header. Otherwise the request is answered `400`
-`endorsement_sender_mismatch`. A third party's endorsement reaches a node only inside a
-Connection Request or a Shared Nodes batch, never here.
+`endorsement_sender_mismatch`. The endorsed node MUST be the receiver: `endorsed_mip_identifier`
+MUST equal the receiving node's identifier, otherwise `400` `endorsement_invalid`. A third
+party's endorsement, or an endorsement of a third node, reaches a node only inside a
+Connection Request or a Shared Nodes batch, never here; see
+[Late Automatic Approval](#late-automatic-approval) for what a relayed endorsement can do.
 
 Because the sender is the endorser and is an `ACTIVE` connection, the receiver holds its key,
 and every endorsement arriving here is either verified or rejected; none is stored as
@@ -1360,16 +1407,6 @@ and is not stored.
   endorsement identical to one already stored is answered `200` and changes nothing. An endorsement carries no
   identifier of its own: it is named by its endorser, endorsed node, fingerprint, and
   `issued_at`, all of which are inside the signed document.
-
-#### Late Automatic Approval
-
-An endorsement arriving here can complete a pending connection. When the receiver holds a
-`PENDING` connection request from the endorsed node and the newly verified endorsement
-satisfies its automatic approval policy, the receiver MAY approve that connection and send the
-endorsed node a [Connection Approved](#connection-approved) request with `authentication_type`
-`ENDORSEMENT` and no `endorsement`. A `REOPENED` record is not eligible; a person declined
-or revoked it, and only a person approves it again. See Repeated Requests under
-[Connection Request](#connection-request).
 
 ### Endorsement Revoked
 
@@ -2306,8 +2343,8 @@ To verify an endorsement a receiver:
    stored public key;
 5. checks that `expires_at` is in the future;
 6. checks that `endorsed_public_key_fingerprint` equals the fingerprint of the endorsed
-   node's public key as the receiver holds it, or, in a Connection Request, as presented in
-   the request.
+   node's public key as the receiver holds it, or, in a Connection Request or a Shared Nodes
+   element, as presented there.
 
 An endorsement that passes every step is **verified**. One that fails step 1 or 2 is
 **rejected** whoever the endorser is, since those checks need no key and such an endorsement
@@ -2385,8 +2422,9 @@ Within that model each node decides for itself:
 Endorsements expire and are renewed by issuing a new one to the Endorsements endpoint. An
 endorsement is withdrawn before it expires by an Endorsement Revoked, and the withdrawal
 travels the same single hop as the trust did: a node acts on a revocation only when it
-verified the endorser's signature itself, with a key it holds through its own `ACTIVE`
-connection. A node that revokes a connection ceases to verify that node's endorsements, as
+verified the endorser's signature itself, with a key it holds through its own connection with
+the endorser, `ACTIVE` for a revocation about a third party and any state for one about
+itself. A node that revokes a connection ceases to verify that node's endorsements, as
 described under Endorsement Verification, but revokes none of its own by doing so; that is a
 separate step.
 
