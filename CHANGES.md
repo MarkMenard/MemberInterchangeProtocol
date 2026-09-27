@@ -63,8 +63,9 @@ before a connection exists there is no agreement about what the limit would be.
 
 **What changed.** 1.0 defined nothing about errors beyond `meta.succeeded`. 2.0 defines the
 error response: an HTTP `4xx` or `5xx` status, never an empty body, never `200` with
-`succeeded: false`; errors listed in `meta.errors` as `{code, message, field?}` with codes
-from a fixed catalog; and a fixed order of checks so that a request with several faults
+`succeeded: false`; errors listed in `meta.errors` as `{code, message, field?, status?}` with
+codes from a fixed catalog, `status` being present on the two errors that report the state of
+the sender's connection (see Notification delivery below); and a fixed order of checks so that a request with several faults
 gets a predictable answer.
 
 **Why.** Two implementations cannot interoperate on errors when the specification does not
@@ -86,12 +87,14 @@ response, as an Approved is.
 
 **Why.** "Does not know ahead of time" left each implementer to decide when that was. Naming
 the one request removes the guesswork. A 1.0 requester that lost the Connection Request
-response holds no key and answers a Declined `401` `sender_unknown`; it recovers by
-re-sending its request, which is the rule everywhere else, rather than by accepting a
-decline from a node it has no record of asking.
+response holds no key and answers any request from the responder `401` `sender_unknown`; it
+recovers by re-sending its request, which is the rule everywhere else, rather than by
+accepting a decline from a node it has no record of asking. A receiver ignores the header on
+any request but a Connection Request, so a 1.0 sender that still sends it on a Declined is
+not broken.
 
 **What to change.** Stop sending the header on a Connection Declined; verify a Declined with
-the stored key.
+the stored key; ignore the header where it is not used.
 
 ### RSA key size (additive)
 
@@ -152,17 +155,21 @@ Shared Nodes below), and carrying them here as well duplicated them.
 ### Repeated Connection Requests (clarification)
 
 **What changed.** 1.0 said only that a declined requester may request again. 2.0 makes a
-Connection Request idempotent per requesting identifier: the receiver always answers `200`
-with the connection's current status and never creates a second record. `PENDING`,
-`REOPENED`, and `ACTIVE` connections are unchanged by a repeat; a `DECLINED` or `REVOKED`
-connection becomes `REOPENED`, a new fifth status, and is presented to a person, whichever
-node revoked it and whichever node made the original request. The request that reopens a
-record refreshes the stored profile and stores the presented endorsements, since a non-active
-record has no other way to be brought current; every other repeat changes nothing, so a
-request sent only to ask what the other side holds has no side effects. Reopening assigns
-the roles afresh: the node that sent the reopening request is the one that asked, and only
-the receiving node's person decides; see Connection notifications from the wrong side
-below. `REOPENED` is `PENDING` without automatic
+Connection Request a request and never a query, and says what a receiver does with one for a
+node it already holds a connection for, never creating a second record. On `DECLINED` or
+`REVOKED`, from either node, the record becomes `REOPENED`, a new fifth status, and is
+presented to a person, whichever node revoked it and whichever node made the original
+request; a blocked requester is answered the current status and nothing changes. On
+`PENDING`, `REOPENED`, or `ACTIVE`, a request from the node that asked is an idempotent
+retry answered `200` with the current status, which is how a lost response is recovered; a
+request from the node that did not ask is answered `409` `connection_state_invalid` carrying
+the status, since the receiver's own request is the one waiting on that node. A node that
+wants to know what the other side holds sends a Connection Status instead (see below). The
+request that creates or reopens a record refreshes the stored profile, stores the presented
+endorsements, and sets the roles afresh: the sender asked, the receiver was asked, and any
+earlier roles on the record are discarded; only the receiving node's person decides. A retry
+changes nothing. See Connection notifications from the wrong side below. `REOPENED` is
+`PENDING` without automatic
 approval: it is never approved on the spot or later by an endorsement, because a person
 declined or revoked it and only a person approves it again, and the same notifications move
 it to `ACTIVE`, `DECLINED`, or `REVOKED`. It is a status rather than a private mark so that
@@ -176,8 +183,11 @@ clear the block as part of sending. Because the answer is the receiver's current
 either node may send a repeat to learn what the other holds, and the node that sent it must
 record the status reported.
 
-**Why.** Without a rule, a repeated request either failed or created a duplicate. Reopening a
-declined connection on the same record keeps its history in one place. Reopening a revoked
+**Why.** Without a rule, a repeated request either failed or created a duplicate, and a
+request that was not a request was never defined. Confining idempotency to the statuses that
+are idempotent lets either side restart a declined or revoked connection, and refusing a
+request from the node that did not ask keeps a repeat from ever conferring a role it did not
+earn. Reopening a declined connection on the same record keeps its history in one place. Reopening a revoked
 one the same way is how a revoked connection comes back now that Connection Restored is
 gone; see Connection Revoked below. Blocking is what lets a node refuse a persistent
 requester without a person reviewing the same request again each time; it stays local and
@@ -211,9 +221,10 @@ anything.
 daily_rate_limit, endorsement, known_organizations}`. 2.0's is `{node_profile,
 share_my_organization, daily_rate_limit, authentication_type, endorsement}`.
 `known_organizations` is gone; the approver pushes its known nodes afterward through
-Shared Nodes. `authentication_type` is new and required. `endorsement` is present only when
-a person approved the connection (`MANUAL`) and absent otherwise. `node_profile` carries the
-approver's `gdpr_metadata`.
+Shared Nodes. `authentication_type` is new and required. `endorsement` is required when a
+person approved the connection (`MANUAL`) and must be absent otherwise; a mismatch is `422`
+`validation_failed` naming `endorsement`. `node_profile` carries the approver's
+`gdpr_metadata`.
 
 **Why.** The list of known nodes needed a size limit, endorsements per node, and a way to
 send more later, none of which fit inside an approval. Shared Nodes does all three, and a
@@ -234,10 +245,14 @@ node that requested the connection from it, unless it has also requested the con
 that node. One from the wrong side is answered `403` `connection_mismatch`, whatever state
 the record is in, and changes nothing. The meaning of `connection_mismatch` widens from "a
 reply from a connection other than the one that made the request" to "the sender is not the
-node entitled to send this on this connection", covering both. Every node already knows
-whether it asked, since it sent or received the request, and records that with the
-connection. Two nodes that request each other at once have both asked, so both accept, and
-the second approval to land is answered `200` unchanged.
+node entitled to send this on this connection", covering both. A node records two facts
+with each connection, whether it asked and whether it was asked; it asked when its own
+Connection Request was answered `200` with `PENDING`, `REOPENED`, or `ACTIVE`, and both facts
+are set afresh whenever a request creates or reopens the record. Two nodes that request each
+other at once have both asked, so both accept, and the second approval to land is answered
+`200` unchanged. The connection a notification acts on is the authenticated sender's: a
+payload identifier that differs from the `X-MIP-MIP-IDENTIFIER` header is `422`
+`validation_failed` naming the field, as on a Connection Request.
 
 **Why.** 1.0 and the earlier 2.0 text moved a record on its source state alone, so a
 requester could send the node it had asked a Connection Approved and be made `ACTIVE`, with
@@ -246,9 +261,11 @@ looking at the request. Manual approval is the identity check on a requester, an
 let the requester perform it. The statuses carry no direction; the nodes do, and the rule
 makes that a check rather than an assumption.
 
-**What to change.** Record, with each connection, whether you asked for it. Refuse an
-Approved or Declined for a connection you did not ask for, or from any node but the other
-side of it, with `403` `connection_mismatch`, before the state check.
+**What to change.** Record, with each connection, whether you asked for it and whether you
+were asked, and reset both when a request creates or reopens the record. Refuse an Approved
+or Declined for a connection you did not ask for, or from any node but the other side of it,
+with `403` `connection_mismatch`, before the state check. Check the payload identifier
+against the header.
 
 ### Manual approval supersedes approval by endorsement (additive)
 
@@ -286,9 +303,9 @@ source state moves to the target; a record already in the target state is answer
 unchanged; a record in neither is answered `409` `connection_state_invalid`, which now
 carries the receiver's current `status` and which the sender must not act on. `403`
 `connection_not_active` also carries the receiver's current `status`, and the sender must
-record it. A repeated Connection Request doubles as the way to learn what the other node
-holds. Connection Revoked joins the endpoints exempt from the active-connection check in the
-order of checks.
+record it. A node that wants to ask outright sends a Connection Status (see below); the node
+that asked may also retry its own Connection Request. Connection Revoked joins the endpoints
+exempt from the active-connection check in the order of checks.
 
 **Why.** Each notification is one request whose reply can be lost, so the two nodes can
 disagree. An earlier draft of 2.0 required the receiver's record to be in exactly one state
@@ -382,6 +399,28 @@ limit and status at the same time.
 
 **What to change.** Read the receiver's profile from `data.mip_connection.node_profile`.
 
+### Connection Status (additive)
+
+**What changed.** A new endpoint, `POST /mip_connections/status` with an empty body, answers
+with the connection shape used by the Connection Request and Organization Update responses:
+`status`, `authentication_type`, `daily_rate_limit`, `share_my_organization`, and the
+receiver's `node_profile` with its `gdpr_metadata`. It is exempt from the active-connection
+check and is answered from any state, `DECLINED` and `REVOKED` included; a blocked node is
+told `DECLINED` or `REVOKED` like any other. It changes nothing on the receiver. The sender
+records what it reports under the same rule as a Connection Request response, with the same
+exception for a node that has itself approved the connection. The response says nothing about
+which node asked.
+
+**Why.** Under 1.0 and the earlier 2.0 text the only way to learn what the other side held
+was to send another Connection Request, which also reopened records and, read with the role
+rule, could make the sender count as having asked. Asking for a connection and asking about
+one are now two endpoints. The response carries no role information because a node that had
+asked could otherwise tell the other "you asked" and have its own approval accepted; roles
+come only from a node's own request being answered.
+
+**What to change.** Serve `/mip_connections/status`; use it, rather than a Connection
+Request, to learn the other node's view.
+
 ### Endorsement issuance (breaking, security)
 
 **What changed.** 1.0 had both parties exchange endorsements whenever a connection became
@@ -442,8 +481,10 @@ Shared Nodes.
 element is a Node Profile without `gdpr_metadata` plus that node's `endorsements` and
 `revocations`, both required and either possibly empty. A batch holds at most 20 nodes; each
 element carries at most five documents, endorsements and revocations together, all verified
-by the sender, the sender's own first and the rest newest first. A revocation is relayed in
-place of the endorsement it cancels, which is not relayed. The receiver acknowledges with
+by the sender, the sender's own first and the rest newest first, and for each (endorser,
+endorsed node, fingerprint) only the deciding document, the verified endorsement or
+revocation with the latest `issued_at`. A revocation is thus relayed in place of the
+endorsement it cancels, which is not relayed. The receiver acknowledges with
 `{acknowledged: true}`. It is used after an approval (the approver's known nodes to the new
 connection; the new connection to the approver's other sharing connections) and in answer to
 a share request. Only `ACTIVE` connections that set `share_my_organization` may be shared.
@@ -507,7 +548,8 @@ verified revocation; check that the sender at `/endorsements` is the endorser.
 ### Endorsements endpoint response (breaking)
 
 **What changed.** `data.endorsement_id` is removed; the response is `{acknowledged: true}`.
-Re-sending an identical endorsement is answered `200` and changes nothing. A verified
+The endorsement is stored, or left as it was under the ordering rule in Endorsement Storage,
+and the answer is `200` either way; re-sending an identical endorsement changes nothing. A verified
 endorsement may complete a pending connection, in which case the approver sends Connection
 Approved with `authentication_type` `ENDORSEMENT` and no `endorsement`; a `REOPENED` record
 is not eligible.
@@ -522,18 +564,23 @@ payload.
 
 **What to change.** Stop reading `data.endorsement_id`; expect `data.acknowledged`.
 
-### Endorsement Revoked (additive endpoint; breaking for Shared Nodes)
+### Endorsement Revoked (additive)
 
 **What changed.** An endorser can withdraw an endorsement it issued. A revocation is a
 signed document of type `MIP_ENDORSEMENT_REVOCATION_V2` with the endorsement document's
 fields less `expires_at`, since a revocation does not expire, carried in the same full
 payload form as an endorsement with `revocation_document` and `revocation_signature`. The
-endorser sends it to each of its `ACTIVE` connections at a new endpoint,
-`POST /endorsement_revoked`, where the sender must be the endorser (`400`
-`endorsement_sender_mismatch`) and a failed check is `400` `endorsement_invalid`; the
-response is `{acknowledged: true}`. It is relayed onward in Shared Nodes in place of the
-endorsement it cancels. It is not sent to the endorsed node. A revocation is verified by the
-endorsement steps without the expiry check and has the same three outcomes. For each
+endorser sends it to each of its `ACTIVE` connections and to the endorsed node, whatever
+state that connection is in, at a new endpoint, `POST /endorsement_revoked`, where the sender
+must be the endorser (`400` `endorsement_sender_mismatch`) and a failed check is `400`
+`endorsement_invalid`; the response is `{acknowledged: true}`, and a re-sent or superseded
+revocation is `200` with nothing changed. The endpoint is exempt from the active-connection
+check so that the endorsed node can be told after its connection has ended; a revocation
+concerning any other node is refused `403` `connection_not_active` from a sender that is not
+`ACTIVE`. The endorsed node stops presenting the endorsement. It is relayed onward in Shared
+Nodes in place of the endorsement it cancels. A revocation is verified by the endorsement
+steps without the expiry and fingerprint checks, the fingerprint being part of the name of
+the endorsement withdrawn rather than a claim to check, and has the same three outcomes. For each
 (endorser, endorsed node, fingerprint) the verified document with the latest `issued_at`
 decides: a later revocation marks the endorsement revoked, a later endorsement reinstates
 it, an older copy of either changes nothing, and the revocation wins a tie. A revoked
@@ -553,13 +600,17 @@ the authority on its own vouching. The withdrawal travels the same single hop as
 a node acts on a revocation only when it verified the endorser's signature itself. The two
 revocations are kept separate because they reach different audiences: a connection
 revocation goes to the one node being cut off, an endorsement revocation to everyone who
-holds the endorsement, and it must still travel after the endorsed node has ceased to be a
-connection.
+holds the endorsement, the endorsed node among them, and it must still travel after the
+endorsed node has ceased to be a connection. Telling the endorsed node even after its
+connection is revoked costs one exemption and answers the question that node most needs
+answered; standing on the connection's state to withhold it served nothing.
 
-**What to change.** Serve `/endorsement_revoked`; store and order revocations with
-endorsements by the triple and `issued_at`; send and accept `revocations` in every Shared
-Nodes element and share the five-document cap between the two arrays; stop counting and
-relaying a revoked endorsement.
+**What to change.** Serve `/endorsement_revoked`, accepting a revocation of an endorsement of
+yourself from any state and one about a third party from `ACTIVE` connections only; store and
+order revocations with endorsements by the triple and `issued_at`; send and accept
+`revocations` in every Shared Nodes element, share the five-document cap between the two
+arrays, and relay only the deciding document per triple; stop counting, relaying, and
+presenting a revoked endorsement.
 
 ## Member Protocol
 
