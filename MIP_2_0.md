@@ -1,7 +1,7 @@
 # Member Interchange Protocol 2.0
 
 **Lead author:** Mark Menard (Groupable)
-**Date:** September 27, 2026
+**Date:** October 1, 2026
 **Status:** Current specification. Supersedes MIP 1.0. The differences from 1.0, with the
 reason for each, are listed in `CHANGES.md`.
 
@@ -30,6 +30,14 @@ defines how nodes exchange information, not what an organization does with it on
   answers it. The terms describe roles within one exchange; the roles swap in the next.
 - **Sender** and **receiver**: the node that makes one HTTP request and the node that
   handles it.
+- **Identity key** and **signing key**: a node's two RSA key pairs. The identity key's
+  fingerprint is the node's identifier, and the identity key signs nothing but the signing
+  key attestation. The signing key signs every request, endorsement, and revocation.
+- **Signing key attestation**: a node's statement, signed with its identity key, that a
+  given signing key speaks for it. It travels in the node's profile.
+- **Node profile document**: a node's description of itself, signed with its signing key,
+  so that a profile is believed only on the word of the node it describes, whichever node
+  delivered it.
 - **Endorser** and **endorsed node**: the node that signs an endorsement and the node whose
   identity it vouches for.
 - **Known node**: a node the receiver has heard of through discovery but is not connected to.
@@ -42,8 +50,8 @@ defines how nodes exchange information, not what an organization does with it on
 - **Connection Approved**: notify a requester that its connection request has been approved.
 - **Connection Declined**: notify a requester that its connection request has been declined.
 - **Connection Revoked**: notify a node that the sender has revoked the connection, whatever
-  its state, and will honor no further requests. A revoked connection comes back through a
-  new Connection Request.
+  its state, and will honor no further ordinary requests. A revoked connection comes back
+  through a new Connection Request.
 - **Connection Status**: ask a node what it holds for the connection between the two, in any
   state, without changing anything.
 - **Organization Update**: push updated organization information to a connected node and
@@ -64,7 +72,7 @@ defines how nodes exchange information, not what an organization does with it on
   by first name and last name, with birthdate when known.
 - **Member Search Reply**: deliver the result of a member search. A reply carries the matching
   members with their status in the responding organization, or a decline.
-- **Certificate of Good Standing Request**: request a certificate of good standing for a
+- **Certificate of Good Standing Request**: request a Certificate of Good Standing for a
   person from a connected organization.
 - **Certificate of Good Standing Reply**: deliver the certificate, or a decline, to the
   requester.
@@ -77,44 +85,75 @@ the protocol is the same either way.
 
 ### MIP Identifier
 
-Each node has a MIP identifier: 32 lowercase hexadecimal characters representing 128 bits.
-It identifies the node to every other node for the life of the node and MUST NOT change. A
-node MUST generate its identifier so that a collision with any other node's identifier is
-negligibly likely; 128 bits drawn from a random source achieve that. How the value is
-produced is up to the node. One way is to hash a random UUID together with a string
-particular to the organization:
+Each node has a MIP identifier: the [fingerprint](#public-key-fingerprint) of its identity
+public key, the SHA-256 digest of the key's DER-encoded SubjectPublicKeyInfo written as 64
+lowercase hexadecimal characters. It identifies the node to every other node for the life of
+the node and MUST NOT change. Because the identifier is derived from the key, a node can
+claim an identifier only by holding the private half of the key it names; no node can be
+impersonated by another that has merely learned its identifier.
 
 ```ruby
-require 'digest'
+require 'openssl'
 
-uuid = Random.uuid
-salt = "Grand Lodge of Example"
-
-mip_identifier = Digest::MD5.hexdigest("#{uuid}#{salt}")
+identity_key = OpenSSL::PKey::RSA.new(4096)
+mip_identifier = OpenSSL::Digest::SHA256.hexdigest(identity_key.public_key.to_der)
 ```
 
-The same in MySQL:
+### Key Pairs
 
-```sql
-SELECT MD5(CONCAT(UUID(), 'Grand Lodge of Example')) AS mip_identifier
-```
+Each node has two RSA key pairs, and each MUST be the node's own, used by no other node.
 
-### RSA Key Pair
+- The **identity key** is the node's identity: its public half's fingerprint is the node's
+  identifier. The private half signs one thing only, the node's
+  [signing key attestation](#signing-key-attestation). It is used when the node is set up
+  and whenever the signing key is replaced, and at no other time, so a node MAY keep it
+  apart from the systems that handle requests. Where and how a node keeps either private
+  key is the node's own business.
+- The **signing key** signs every request the node sends and every endorsement and
+  revocation it issues. It is the key a receiver verifies requests with.
 
-Each node has an RSA key pair. The private key signs every request the node sends and every
-endorsement it issues. The public key is given to other nodes when a connection is requested
-and travels in the node's profile.
+Both public keys, and the signing key attestation that binds them, are given to other nodes
+when a connection is requested and travel in the node's profile.
 
-The key MUST be at least 2048 bits. 4096 bits is RECOMMENDED. The key MUST NOT exceed 8192
+Each key MUST be at least 2048 bits. 4096 bits is RECOMMENDED. Neither key may exceed 8192
 bits; the bound keeps the signature and public key headers under common per-header size
-limits. A receiver MUST reject a connection request whose key is outside these bounds (see
-Error Responses). The bound applies to the key presented in a connection request; a node's key
-cannot be changed through an organization update, and key rotation is outside the scope of
-this version of the protocol (see [Key Rotation](#key-rotation) under MIP 2.1 Proposed
-Ideas for why it is needed).
+limits. A receiver MUST reject a connection request whose keys are outside these bounds
+(see Error Responses). Neither key, nor the identifier, can be changed through an
+organization update. Replacing the signing key is outside the scope of this version of the
+protocol (see [Key Rotation](#key-rotation) under MIP 2.1 Proposed Ideas for how it will
+work); replacing the identity key is replacing the node.
 
 Public keys are exchanged in PEM format (`-----BEGIN PUBLIC KEY-----`, the SubjectPublicKeyInfo
 encoding).
+
+### Public Key Fingerprint
+
+The fingerprint of a public key is the SHA-256 digest of the key's DER-encoded
+SubjectPublicKeyInfo, written as 64 lowercase hexadecimal characters with no separators. A
+node's identifier is the fingerprint of its identity public key (see
+[MIP Identifier](#mip-identifier)), and a signing key attestation names the signing key by
+its fingerprint (see [Signing Key Attestation](#signing-key-attestation)). The full value is
+compared by machines only.
+
+The **display form** of a fingerprint is its first 16 bytes written as 16 colon-separated
+pairs of lowercase hexadecimal characters:
+
+```
+96:3b:b5:ab:26:27:6a:4f:d5:ef:3f:20:a1:9a:62:62
+```
+
+The display form of a node's identifier is what a person reads to another over the
+telephone when confirming a pending connection request. A system MUST show the display form
+wherever it shows an identifier or a fingerprint to a person, so that both ends of the call
+see the same thing.
+
+```ruby
+require 'openssl'
+
+key = OpenSSL::PKey::RSA.new(public_key_pem)
+fingerprint = OpenSSL::Digest::SHA256.hexdigest(key.public_key.to_der)
+display_form = fingerprint[0, 32].scan(/../).join(":")
+```
 
 ### Node URL
 
@@ -128,7 +167,7 @@ The prefix is chosen by the vendor and is any HTTPS URL prefix. The path `/mip/n
 node's identifier follow it. The canonical example used throughout this document is:
 
 ```
-https://mip.example.org/api/mip/node/e82d40e9416304e8c72790b45b27a8e6
+https://mip.example.org/api/mip/node/963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6
 ```
 
 Every endpoint in this document is a path suffix appended to the receiving node's `mip_url`.
@@ -164,7 +203,7 @@ The following headers are REQUIRED on every request:
 The following header is REQUIRED on a Connection Request and MUST NOT be sent on any other
 request:
 
-- `X-MIP-PUBLIC-KEY`: the sender's RSA public key, PEM encoded and then Base64 encoded
+- `X-MIP-PUBLIC-KEY`: the sender's signing public key, PEM encoded and then Base64 encoded
   without line breaks. It is the one request on which the receiver holds no key for the
   sender yet. On every other request, a Connection Declined included, the receiver verifies
   the signature with the key it already holds for the sender: the requester holds the
@@ -192,7 +231,7 @@ require 'json'
 require 'time'
 
 timestamp = Time.now.iso8601
-path = "/api/mip/node/512ef14957203c6323e79937f3935708/mip_member_searches"
+path = "/api/mip/node/6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df/mip_member_searches"
 body = { :member_number => "M123456", :shared_identifier => "0192b0c4-7c1e-7d3a-9f4b-2a6d8e1c5b70" }.to_json
 
 signature = Base64.strict_encode64(
@@ -201,7 +240,7 @@ signature = Base64.strict_encode64(
 ```
 
 The receiver rebuilds the same document from the header, the path it received the request
-on, and the raw body, and verifies it with the sender's public key. The three parts each
+on, and the raw body, and verifies it with the sender's signing public key. The three parts each
 close off a class of attack: the timestamp defeats replay, the path binds the signature to
 one endpoint so it cannot be presented to another, and the body proves the payload was not
 altered in transit.
@@ -221,7 +260,7 @@ status code and error code given here so that the other side receives a standard
   How replays are detected is the receiver's business; a replay is answered `401` with code
   `replay_detected`.
 - **Request size.** A receiver SHOULD cap the size of a request body. A request over the cap
-  is answered `413` with code `request_too_large`. A cap of 256 KiB accommodates every
+  is answered `413` with code `request_too_large`. A cap of 512 KiB accommodates every
   request in this document at the maximum key size.
 - **Rate limiting.** A receiver SHOULD cap the number of requests it accepts from one
   connection per day, and it advertises that cap as `daily_rate_limit` when the connection is
@@ -294,7 +333,7 @@ wrong side of the connection.
 | `404` | The thing addressed does not exist | `node_not_found`, `request_not_found` |
 | `409` | The request is valid but the connection or request is in the wrong state | `connection_state_invalid`, `request_already_answered` |
 | `413` | The body is too large | `request_too_large` |
-| `422` | The request is well formed but its content is rejected | `validation_failed` (with `field`), `public_key_mismatch`, `public_key_size_invalid` |
+| `422` | The request is well formed but its content is rejected | `validation_failed` (with `field`), `public_key_mismatch`, `public_key_size_invalid`, `attestation_invalid` |
 | `429` | The sender is rate limited; `Retry-After` is set | `rate_limit_exceeded` |
 | `500` | The receiver failed | `internal_error` |
 
@@ -313,24 +352,25 @@ for the first fault found.
    any state, or the
    request is a Connection Request carrying `X-MIP-PUBLIC-KEY`; otherwise `sender_unknown`.
    The timestamp is within the receiver's window (`timestamp_out_of_window`), the signature
-   is present (`signature_missing`), and it verifies against that key (`signature_invalid`).
-   On a Connection Request the signature is always verified with the header key, whether or
-   not the receiver already holds a key for the sender; the comparison of the header key with
-   a stored key is an endpoint rule, so that a repeated request with a different key is
-   reported as such rather than as a bad signature.
+   is present (`signature_missing`), and it verifies against the connection's stored signing
+   key (`signature_invalid`). On a Connection Request the signature is always verified with
+   the header key, whether or not the receiver already holds a key for the sender; the
+   comparison of the header key with a stored key is an endpoint rule, so that a repeated
+   request with a different key is reported as such rather than as a bad signature.
 4. **Replay** (`401`): the request is not a repeat (`replay_detected`).
 5. **Authorization** (`403`): the sender's environment matches the receiver's, and the
    connection between them is `ACTIVE`. The following endpoints are exempt from the `ACTIVE`
    check because the connection is, or may be, in another state when they are called:
    Connection Request, Connection Approved, Connection Declined, Connection Revoked,
    Connection Status, and Endorsement Revoked. Connection Revoked is exempt because it is
-   accepted from any state; Connection Status because its purpose is to ask in any state;
-   see [Connection Revoked](#connection-revoked). Endorsement Revoked is exempt because the
+   accepted from any state (see [Connection Revoked](#connection-revoked)); Connection
+   Status because its purpose is to ask in any state (see
+   [Connection Status](#connection-status)). Endorsement Revoked is exempt because the
    endorsed node is told even after its connection with the endorser has ended; a revocation
    concerning any other node is refused from a sender that is not `ACTIVE` as an endpoint
    rule; see [Endorsement Revoked](#endorsement-revoked). Any other request from a connection that is
    not `ACTIVE` is answered `connection_not_active`, carrying the connection's current
-   status in `status`, which the sender records; see
+   status in `status`, which the sender records only when it is `REVOKED`; see
    [Notification Delivery](#notification-delivery).
 6. **Rate limit** (`429`): the connection is within its daily limit. A Connection Request is
    exempt.
@@ -366,13 +406,24 @@ None. The receiving node is identified by its `mip_url`.
 ```json
 {
   "node_profile": {
-    "mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-    "mip_url": "https://mip.example.org/api/mip/node/e82d40e9416304e8c72790b45b27a8e6",
+    "mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+    "mip_url": "https://mip.example.org/api/mip/node/963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
     "organization_legal_name": "Grand Lodge of Example",
     "contact_person": "John Smith",
     "contact_phone": "+1-555-123-4567",
     "organization_public_website": "https://www.example.org",
-    "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "identity_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "signing_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "signing_key_attestation": {
+      "mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+      "signing_public_key_fingerprint": "2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc",
+      "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"signing_public_key_fingerprint\":\"2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+      "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+      "issued_at": "2026-09-01T08:00:00Z"
+    },
+    "node_profile_document": "{\"type\":\"MIP_NODE_PROFILE_V2\",\"mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"mip_url\":\"https://mip.example.org/api/mip/node/963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"organization_legal_name\":\"Grand Lodge of Example\",\"contact_person\":\"John Smith\",\"contact_phone\":\"+1-555-123-4567\",\"organization_public_website\":\"https://www.example.org\",\"identity_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_key_attestation_document\":\"{\\\"type\\\":\\\"MIP_SIGNING_KEY_ATTESTATION_V2\\\",\\\"mip_identifier\\\":\\\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\\\",\\\"signing_public_key_fingerprint\\\":\\\"2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc\\\",\\\"issued_at\\\":\\\"2026-09-01T08:00:00Z\\\"}\",\"signing_key_attestation_signature\":\"h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...\",\"issued_at\":\"2026-09-01T08:05:00Z\"}",
+    "node_profile_signature": "q3Lm8VbT2wYrN6kDf0xHs9JcA4eZpU7iG1oWtB5yKvR2...",
+    "issued_at": "2026-09-01T08:05:00Z",
     "gdpr_metadata": {
       "controller": { "role": "controller", "name": "Grand Lodge of Example" },
       "processors": [
@@ -412,13 +463,24 @@ None. The receiving node is identified by its `mip_url`.
       "daily_rate_limit": 100,
       "share_my_organization": true,
       "node_profile": {
-        "mip_identifier": "512ef14957203c6323e79937f3935708",
-        "mip_url": "https://mip.example.org/api/mip/node/512ef14957203c6323e79937f3935708",
+        "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+        "mip_url": "https://mip.example.org/api/mip/node/6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
         "organization_legal_name": "Grand Lodge of Elsewhere",
         "contact_person": "Mary Jones",
         "contact_phone": "+1-555-987-6543",
         "organization_public_website": "https://www.elsewhere.example",
-        "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "identity_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "signing_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "signing_key_attestation": {
+          "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+          "signing_public_key_fingerprint": "545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c",
+          "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"signing_public_key_fingerprint\":\"545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+          "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+          "issued_at": "2026-09-01T08:00:00Z"
+        },
+        "node_profile_document": "{\"type\":\"MIP_NODE_PROFILE_V2\",\"mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"mip_url\":\"https://mip.example.org/api/mip/node/6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"organization_legal_name\":\"Grand Lodge of Elsewhere\",\"contact_person\":\"Mary Jones\",\"contact_phone\":\"+1-555-987-6543\",\"organization_public_website\":\"https://www.elsewhere.example\",\"identity_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_key_attestation_document\":\"{\\\"type\\\":\\\"MIP_SIGNING_KEY_ATTESTATION_V2\\\",\\\"mip_identifier\\\":\\\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\\\",\\\"signing_public_key_fingerprint\\\":\\\"545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c\\\",\\\"issued_at\\\":\\\"2026-09-01T08:00:00Z\\\"}\",\"signing_key_attestation_signature\":\"h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...\",\"issued_at\":\"2026-09-01T08:05:00Z\"}",
+        "node_profile_signature": "q3Lm8VbT2wYrN6kDf0xHs9JcA4eZpU7iG1oWtB5yKvR2...",
+        "issued_at": "2026-09-01T08:05:00Z",
         "gdpr_metadata": {
           "controller": { "role": "controller", "name": "Grand Lodge of Elsewhere" },
           "processors": [
@@ -457,8 +519,10 @@ specified under [Endorsements](#endorsements), and known nodes are pushed afterw
 
 The requester records the connection from the response: its `status`,
 `authentication_type`, `daily_rate_limit`, and `share_my_organization`, and the receiver's
-profile and `gdpr_metadata`. This applies equally when the request repeats an existing
-connection. The node that sent it MUST bring its own record into line with the status
+profile and `gdpr_metadata`. It verifies the profile first, as specified under
+[Verifying a Node Profile](#verifying-a-node-profile), against the identifier it addressed;
+a response whose profile fails is a failed request, shown to a person, and nothing is
+recorded from it. This applies equally when the request repeats an existing connection. The node that sent it MUST bring its own record into line with the status
 reported, whatever that record held before, with one exception: a node that has itself
 approved the connection, and so holds it `ACTIVE`, keeps its approval when the response
 reports `PENDING` or `REOPENED`, which arises only when two requests cross (see Repeated
@@ -473,7 +537,8 @@ asked when its own Connection Request was answered `200` with `PENDING`, `REOPEN
 that creates or reopens a record sets these facts afresh on both nodes and discards any
 earlier ones on that record: the receiver sets was-asked and clears asked when it creates or
 reopens, and the requester sets asked and clears was-asked when its `200` arrives with
-`PENDING`, `REOPENED`, or `ACTIVE` for a record it held as nothing, `DECLINED`, or `REVOKED`.
+`PENDING`, `REOPENED`, or `ACTIVE` for a record it holds as nothing, `DECLINED`, or
+`REVOKED` when the response arrives.
 A role from an earlier round of the same connection never carries over. Both may be true,
 when two requests cross.
 Every node knows these without being told, and the connection notifications depend on them:
@@ -486,19 +551,27 @@ The receiver MUST check, in this order, before storing anything:
 
 1. `node_profile.mip_identifier` equals the `X-MIP-MIP-IDENTIFIER` header. Otherwise `422`
    `validation_failed` with `field` set to `mip_identifier`.
-2. The key in `X-MIP-PUBLIC-KEY` and `node_profile.public_key` are the same key. The two
-   MUST be compared as parsed keys (for example by their DER encoding), so that PEM
+2. Every REQUIRED field of the Node Profile and of `gdpr_metadata` is present. Otherwise
+   `422` `validation_failed` naming the field.
+3. The key in `X-MIP-PUBLIC-KEY` and `node_profile.signing_public_key` are the same key.
+   The two MUST be compared as parsed keys (for example by their DER encoding), so that PEM
    whitespace does not matter. Otherwise `422` `public_key_mismatch` and nothing is stored.
    The signature was verified with the header key; this check makes sure the key the receiver
    goes on to store is the key that signed the request.
-3. The key is within the size bounds under [RSA Key Pair](#rsa-key-pair). Otherwise `422`
+4. The node profile verifies as specified under
+   [Verifying a Node Profile](#verifying-a-node-profile): the identity key hashes to the
+   identifier, the signing key attestation names the signing key presented, and the node
+   profile document verifies under it. Otherwise `422` `attestation_invalid` and nothing is
+   stored. This is what ties the identifier to the key that signed the request.
+5. Both keys are within the size bounds under [Key Pairs](#key-pairs). Otherwise `422`
    `public_key_size_invalid`.
-4. Every REQUIRED field of the Node Profile and of `gdpr_metadata` is present. Otherwise
-   `422` `validation_failed` naming the field.
-5. When the receiver already holds a connection for the requester, the presented key is the
-   key it holds. Otherwise `422` `public_key_mismatch` and nothing changes; see Repeated
-   Requests.
-6. When the receiver already holds a connection for the requester, the request is handled as
+6. Every presented endorsement names the requester as its endorsed node. Otherwise `422`
+   `validation_failed` naming `endorsements`; an endorsement of any other node reaches a
+   node only inside a Shared Nodes batch.
+7. When the receiver already holds a connection for the requester, the presented keys are
+   the keys it holds. Otherwise `422` `public_key_mismatch` and nothing changes; see
+   Repeated Requests.
+8. When the receiver already holds a connection for the requester, the request is handled as
    a repeat, including the `409` for a request from the node that did not ask; see Repeated
    Requests. Otherwise the receiver goes on to create the connection.
 
@@ -511,8 +584,8 @@ automatic approval.
 A node that has already been vouched for by a node the receiver trusts can be connected
 without a person's involvement. The receiver verifies each presented endorsement as specified
 under [Endorsement Verification](#endorsement-verification). An endorsement is verified only
-when its endorser is an `ACTIVE` connection of the receiver, since that is the only way the
-receiver holds the endorser's key. Which verified endorsers count toward automatic approval,
+when its endorser is an `ACTIVE` connection of the receiver, since only an `ACTIVE`
+connection's key is trusted to anchor a signature. Which verified endorsers count toward automatic approval,
 and how many are needed, is the receiving node's own policy; a node MAY count every `ACTIVE`
 connection, or only those a person has marked as trusted for this purpose. A threshold of
 one endorsement from a trusted endorser is a common choice.
@@ -535,9 +608,11 @@ person; see Repeated Requests.
 A person at the receiving organization approves or declines a pending request. Before
 approving, they SHOULD confirm the requester's identity out of band, since the request itself
 proves only that whoever sent it holds the private key matching the presented public key.
-The requester's contact person reads the display form of their public key fingerprint (see
+The requester's contact person reads the display form of their node's identifier (see
 [Public Key Fingerprint](#public-key-fingerprint)) to the approver over the telephone, and
-the approver compares it with the fingerprint their system shows for the pending request.
+the approver compares it with the identifier their system shows for the pending request.
+The identifier is the fingerprint of the requester's identity key, so a match confirms that
+the organization on the telephone holds the key behind the request.
 
 The approval is delivered with a [Connection Approved](#connection-approved) request; a
 decline with a [Connection Declined](#connection-declined) request.
@@ -550,9 +625,13 @@ made (see [Endorsements](#endorsements)).
 #### Repeated Requests
 
 A Connection Request is a request, never a query; a node that wants to know what the other
-side holds sends a [Connection Status](#connection-status). What the receiver does with a
-Connection Request depends on the connection it holds for the requesting node. It MUST NOT
-create a second record for a node it already holds a connection for.
+side holds sends a [Connection Status](#connection-status). A node MUST NOT send a
+Connection Request for a connection it holds `ACTIVE`: it has nothing to ask for, and a node
+that believes a connection active but finds its requests refused learns why from the `403`
+(see [Notification Delivery](#notification-delivery)) before it asks again. What the
+receiver does with a Connection Request depends on the connection it holds for the
+requesting node. It MUST NOT create a second record for a node it already holds a connection
+for.
 
 - **No connection.** The receiver holds no connection for the requesting node, whatever it
   may know of that node through discovery. It creates one, `PENDING` or `ACTIVE` by
@@ -616,17 +695,17 @@ repeated request reopens the record as above. A node that has blocked another an
 sends it a Connection Request of its own SHOULD clear the block as part of sending, since
 asking for the connection and refusing it cannot both be meant.
 
-A repeated request MUST present the same public key the receiver already holds for that
-identifier. A different key is answered `422` `public_key_mismatch` and changes nothing, so
-that a repeated request cannot be used to swap a key before anyone has verified it. Changing
-a node's key is outside the scope of this version of the protocol; a node that rotates its
-key after a connection is declined or revoked cannot reopen it in 2.0, and that is left for
-2.1 (see [Key Rotation](#key-rotation)).
+A repeated request MUST present the same keys the receiver already holds for that
+identifier. A different key is answered `422` `public_key_mismatch` and changes nothing,
+since 2.0 defines no replacement of a signing key and a repeated request is not the place
+to define one. A node that replaces its signing key after a connection is declined or
+revoked cannot reopen it in 2.0, and that is left for 2.1 (see
+[Key Rotation](#key-rotation)).
 
 A node that wants to know what the other side holds sends a
 [Connection Status](#connection-status), which changes nothing on either side's roles. It
-also learns from the `status` a `409` or a `403` `connection_not_active` carries; see
-[Notification Delivery](#notification-delivery).
+also sees the `status` a `409` or a `403` `connection_not_active` carries, of which only
+`REVOKED` is ever recorded; see [Notification Delivery](#notification-delivery).
 
 ### Notification Delivery
 
@@ -643,8 +722,8 @@ rules keep them in agreement without background retries, queues, or locks on eit
   acts, whatever the other node then answers, and sends the Connection Revoked afterward: a
   node is not hostage to the node it is revoking. This is safe because Revoked is the one
   notification the receiver never answers `409`, so a re-send can never conflict. A failed
-  Revoked is still reported to the person, who may re-send it. A `403` or a `409` answering an
-  Approved or Declined likewise changes nothing on the sender; the person is shown what the
+  Revoked is still reported to the person, who may re-send it. A `403` or a `409` answering
+  any notification likewise changes nothing on the sender; the person is shown what the
   other side holds, and repairs it with the moves below. There is no automatic retry of any
   notification but the one recommended below. A node MUST let a person re-send any
   notification. A re-send is a fresh request with its own timestamp and signature; it is not
@@ -666,21 +745,26 @@ rules keep them in agreement without background retries, queues, or locks on eit
   receiver's current status of the connection in `status`, so that the person sees the
   disagreement itself rather than a bare conflict. The sender MUST NOT change its own record
   on the strength of a `409`.
-- **A `403` says what the receiver holds, and the sender catches up.** The
+- **A `403` says what the receiver holds, and the sender records one thing from it.** The
   `connection_not_active` error carries the receiver's current status of the connection in
-  `status`, and the sender MUST record it, on the same ground as for a Connection Request:
-  the answering node is the one whose approval or refusal counts. A node behind on a
-  revocation learns `REVOKED` on its next ordinary request without reopening anything. The
-  two errors are treated differently because a `409` answers an action a person is in the
-  middle of, so the person sees the conflict and chooses, while a `403` answers a routine
-  request with no one mid-action, so the node may simply catch up. Any node may also ask
-  outright with a [Connection Status](#connection-status), which is recorded the same way
-  and changes nothing on the receiver. The node that asked has one more: its own Connection
-  Request is an idempotent retry, answered with the current state; see Repeated Requests
-  under [Connection Request](#connection-request).
+  `status`. When that status is `REVOKED` the sender MUST record it, as the other node's
+  revocation of the connection, not its own; a node behind on a revocation thereby learns of
+  it on its next ordinary request without reopening anything. Any other status the error
+  carries is shown to a person and changes nothing on the sender, as with a `409`. The rule
+  is that a node records from a report only what the reporting node could have imposed on
+  it through an explicit endpoint anyway, and `REVOKED` is the one status that qualifies:
+  Connection Revoked is accepted from any state, so a peer that reports `REVOKED` gains
+  nothing it could not have done by sending one, and a peer that lies only cuts off its own
+  connection. `ACTIVE` and `DECLINED` can be produced only by the asked node's person, and
+  `PENDING` and `REOPENED` only by a Connection Request, so none of them is taken from a
+  report. Any node may also ask outright with a [Connection Status](#connection-status),
+  which is recorded under the same rule and changes nothing on the receiver. The node that
+  asked has one more: its own Connection Request is an idempotent retry, answered with the
+  current state; see Repeated Requests under [Connection Request](#connection-request).
 
-One retry is RECOMMENDED, and only one. When a pending request is approved by an endorsement that arrives
-later (see [Late Automatic Approval](#late-automatic-approval)), no person is at hand to
+One retry is RECOMMENDED, and only one. When a pending request is approved by an endorsement
+that becomes verified later (see [Late Automatic Approval](#late-automatic-approval)), no
+person is at hand to
 re-send a Connection Approved that fails. A node SHOULD retry that one notification in the
 background, with backoff and for a bounded period, and tell a person if it still fails. The
 rules above make this safe: the record changes only on `200`; a retry that finds the record
@@ -701,8 +785,9 @@ action as not done, so the person takes it again, and the receiver, already in t
 state, answers `200`. The second is an undelivered revocation: the revoker holds `REVOKED`
 and the other node still holds `ACTIVE`. The revoker sends that node nothing but an
 Endorsement Revoked and answers its ordinary requests `403` `connection_not_active` carrying
-`REVOKED`, which that node records, so it learns on its next request; a re-sent Revoked, or a
-Connection Request from either node, does the same. The third is a lost Connection Request
+`REVOKED`, which that node records, so it learns on its next request; a re-sent Revoked does
+the same, and once the revoked node holds `REVOKED` either node may ask again. The third is
+a lost Connection Request
 response: the receiver created or reopened the record and the requester does not know it,
 so an approval sent meanwhile is refused `403` `connection_mismatch`, or `409` where the
 requester still holds an old role. The requester re-sends its request, which is an idempotent
@@ -716,7 +801,7 @@ edit a connection's status by hand, and none should.
 
 Notify a requester that its connection request has been approved. Sent by the approving node
 after a person approves the request, or after a pending request is approved later by an
-endorsement that arrives in a Shared Nodes batch; see
+endorsement that becomes verified; see
 [Late Automatic Approval](#late-automatic-approval).
 
 #### Endpoint: `<mip_url>/mip_connections/approved`
@@ -734,13 +819,24 @@ None. The receiving node is identified by its `mip_url`.
 ```json
 {
   "node_profile": {
-    "mip_identifier": "512ef14957203c6323e79937f3935708",
-    "mip_url": "https://mip.example.org/api/mip/node/512ef14957203c6323e79937f3935708",
+    "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+    "mip_url": "https://mip.example.org/api/mip/node/6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
     "organization_legal_name": "Grand Lodge of Elsewhere",
     "contact_person": "Mary Jones",
     "contact_phone": "+1-555-987-6543",
     "organization_public_website": "https://www.elsewhere.example",
-    "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "identity_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "signing_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "signing_key_attestation": {
+      "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+      "signing_public_key_fingerprint": "545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c",
+      "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"signing_public_key_fingerprint\":\"545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+      "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+      "issued_at": "2026-09-01T08:00:00Z"
+    },
+    "node_profile_document": "{\"type\":\"MIP_NODE_PROFILE_V2\",\"mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"mip_url\":\"https://mip.example.org/api/mip/node/6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"organization_legal_name\":\"Grand Lodge of Elsewhere\",\"contact_person\":\"Mary Jones\",\"contact_phone\":\"+1-555-987-6543\",\"organization_public_website\":\"https://www.elsewhere.example\",\"identity_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_key_attestation_document\":\"{\\\"type\\\":\\\"MIP_SIGNING_KEY_ATTESTATION_V2\\\",\\\"mip_identifier\\\":\\\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\\\",\\\"signing_public_key_fingerprint\\\":\\\"545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c\\\",\\\"issued_at\\\":\\\"2026-09-01T08:00:00Z\\\"}\",\"signing_key_attestation_signature\":\"h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...\",\"issued_at\":\"2026-09-01T08:05:00Z\"}",
+    "node_profile_signature": "q3Lm8VbT2wYrN6kDf0xHs9JcA4eZpU7iG1oWtB5yKvR2...",
+    "issued_at": "2026-09-01T08:05:00Z",
     "gdpr_metadata": {
       "controller": { "role": "controller", "name": "Grand Lodge of Elsewhere" },
       "processors": [
@@ -755,10 +851,9 @@ None. The receiving node is identified by its `mip_url`.
   "daily_rate_limit": 100,
   "authentication_type": "MANUAL",
   "endorsement": {
-    "endorser_mip_identifier": "512ef14957203c6323e79937f3935708",
-    "endorsed_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-    "endorsed_public_key_fingerprint": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
-    "endorsement_document": "{\"type\":\"MIP_ENDORSEMENT_V2\",\"endorser_mip_identifier\":\"512ef14957203c6323e79937f3935708\",\"endorsed_mip_identifier\":\"e82d40e9416304e8c72790b45b27a8e6\",\"endorsed_public_key_fingerprint\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"issued_at\":\"2026-09-14T12:00:00Z\",\"expires_at\":\"2027-09-14T12:00:00Z\"}",
+    "endorser_mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+    "endorsed_mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+    "endorsement_document": "{\"type\":\"MIP_ENDORSEMENT_V2\",\"endorser_mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"endorsed_mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"issued_at\":\"2026-09-14T12:00:00Z\",\"expires_at\":\"2027-09-14T12:00:00Z\"}",
     "endorsement_signature": "g2FAOk4wXU6+j85b+1kpz3kgRH+ZmFIk2YkNkCP5GP8l...",
     "issued_at": "2026-09-14T12:00:00Z",
     "expires_at": "2027-09-14T12:00:00Z"
@@ -815,7 +910,9 @@ could approve its own request, and manual approval is the check on a requester's
 The source state is `PENDING` or `REOPENED` and the target state is `ACTIVE`; see
 [Notification Delivery](#notification-delivery). Such a record is marked `ACTIVE`, and
 the receiver records `authentication_type`, `daily_rate_limit`, and `share_my_organization`,
-stores the approver's `gdpr_metadata`, and stores the endorsement, when present, as
+stores the approver's profile, verified as specified under
+[Verifying a Node Profile](#verifying-a-node-profile) and taken when newer than the one
+held, and its `gdpr_metadata`, and stores the endorsement, when present, as
 specified under [Endorsement](#endorsement). A record already `ACTIVE` is answered `200`
 with status `ACTIVE`, and with one exception nothing changes, the endorsement included. The
 exception is an upgrade: a record held as `ENDORSEMENT` that receives an approval carrying
@@ -850,7 +947,7 @@ None. The receiving node is identified by its `mip_url`.
 
 ```json
 {
-  "mip_identifier": "512ef14957203c6323e79937f3935708",
+  "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
   "reason": "Organization not recognized. Please contact us directly to establish a connection."
 }
 ```
@@ -892,8 +989,9 @@ Declining does not prevent the requester from requesting again; see Repeated Req
 
 ### Connection Revoked
 
-Notify a node that the sender has revoked the connection and will honor no further requests.
-It may be sent whatever state the connection is in.
+Notify a node that the sender has revoked the connection and will honor no further ordinary
+requests; the endpoints exempt from the `ACTIVE` check under the Order of Checks are still
+answered. It may be sent whatever state the connection is in.
 
 #### Endpoint: `<mip_url>/mip_connections/revoked`
 
@@ -909,7 +1007,7 @@ None. The receiving node is identified by its `mip_url`.
 
 ```json
 {
-  "mip_identifier": "512ef14957203c6323e79937f3935708",
+  "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
   "reason": "Connection revoked due to policy violation."
 }
 ```
@@ -946,8 +1044,8 @@ harms the revoker.
 
 The target state is `REVOKED` and the source state is any other; see
 [Notification Delivery](#notification-delivery). Whatever the receiver holds, the record is
-marked `REVOKED` and kept, and the receiver stops sending requests to the revoking node. A
-record already `REVOKED` is answered `200` with status `REVOKED` and nothing changes. This
+marked `REVOKED` and kept, and the receiver sends the revoking node no further ordinary
+requests. A record already `REVOKED` is answered `200` with status `REVOKED` and nothing changes. This
 is the one notification that is never answered `409`: it is how a node resets a connection
 whatever state the two sides have reached, and either node may send it at any stage.
 Revoking a `PENDING` or `REOPENED` record withdraws the request when the requester sends
@@ -1006,13 +1104,24 @@ the authenticated sender.
       "daily_rate_limit": 100,
       "share_my_organization": true,
       "node_profile": {
-        "mip_identifier": "512ef14957203c6323e79937f3935708",
-        "mip_url": "https://mip.example.org/api/mip/node/512ef14957203c6323e79937f3935708",
+        "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+        "mip_url": "https://mip.example.org/api/mip/node/6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
         "organization_legal_name": "Grand Lodge of Elsewhere",
         "contact_person": "Mary Jones",
         "contact_phone": "+1-555-987-6543",
         "organization_public_website": "https://www.elsewhere.example",
-        "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "identity_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "signing_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "signing_key_attestation": {
+          "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+          "signing_public_key_fingerprint": "545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c",
+          "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"signing_public_key_fingerprint\":\"545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+          "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+          "issued_at": "2026-09-01T08:00:00Z"
+        },
+        "node_profile_document": "{\"type\":\"MIP_NODE_PROFILE_V2\",\"mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"mip_url\":\"https://mip.example.org/api/mip/node/6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"organization_legal_name\":\"Grand Lodge of Elsewhere\",\"contact_person\":\"Mary Jones\",\"contact_phone\":\"+1-555-987-6543\",\"organization_public_website\":\"https://www.elsewhere.example\",\"identity_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_key_attestation_document\":\"{\\\"type\\\":\\\"MIP_SIGNING_KEY_ATTESTATION_V2\\\",\\\"mip_identifier\\\":\\\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\\\",\\\"signing_public_key_fingerprint\\\":\\\"545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c\\\",\\\"issued_at\\\":\\\"2026-09-01T08:00:00Z\\\"}\",\"signing_key_attestation_signature\":\"h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...\",\"issued_at\":\"2026-09-01T08:05:00Z\"}",
+        "node_profile_signature": "q3Lm8VbT2wYrN6kDf0xHs9JcA4eZpU7iG1oWtB5yKvR2...",
+        "issued_at": "2026-09-01T08:05:00Z",
         "gdpr_metadata": {
           "controller": { "role": "controller", "name": "Grand Lodge of Elsewhere" },
           "processors": [
@@ -1039,23 +1148,29 @@ to ask in any state, and it is answered from any state the receiver holds, `DECL
 is never disclosed. A sender the receiver holds no connection for is answered `401`
 `sender_unknown`, as anywhere else. The request changes nothing on the receiver.
 
-The sender records what the response reports under the same rule by which it accepts a
-notification. `REVOKED`, `PENDING`, and `REOPENED` are recorded from either side. `ACTIVE`
-and `DECLINED` are statuses only the other node's person can produce, and the sender MUST
-record them only when it is the node that asked, the condition under which it would accept a
-Connection Approved or Connection Declined from that node; a report it may not record is
-shown to a person and repaired with the ordinary moves. Without this a requester could answer
-the asked node's query `ACTIVE` and be connected without a person approving. The one
-exception carries over from the Connection Request response: a node that has itself approved
-the connection keeps its approval when the response reports `PENDING` or `REOPENED`. The
-response carries no statement of which node asked, and receiving one never makes the sender
-a node that asked. Roles come from a node's own Connection Request being answered, and from
-nothing another node says; see [Connection Request](#connection-request).
+About the connection's state the sender records one thing from the response: a `status`
+of `REVOKED`, which it records as the other node's revocation of the connection. Every
+other status is shown to a person and changes nothing on the sender, under the rule given under
+[Notification Delivery](#notification-delivery) for a `403`: a node records from a report
+only what the reporting node could have imposed on it through an explicit endpoint anyway.
+Without this a requester could answer the asked node's query `ACTIVE` and be connected
+without a person approving, and a revoker asking after an undelivered revocation could be
+told `ACTIVE` and undo its own revocation. A report the sender may not record is repaired,
+where it needs repairing, with the ordinary moves. The response carries no statement of
+which node asked, and receiving one never makes the sender a node that asked. Roles come
+from a node's own Connection Request being answered, and from nothing another node says;
+see [Connection Request](#connection-request). The receiver's profile, `daily_rate_limit`,
+and `share_my_organization` in the response are taken as from an Organization Update
+response: the profile verified and taken when newer than the one held, the keys and
+signing key attestation never changed; see [Organization Update](#organization-update).
 
 ### Organization Update
 
 Push the sending node's current profile to a connected node and receive that node's current
-profile in return. A node uses this when its contact details, website, or URL change.
+profile in return. A node uses this when its contact details, website, or URL change: it
+issues a new node profile document with a later `issued_at` and delivers it here to each of
+its connections. The same document reaches the node's other peers through Shared Nodes, so
+an update is the direct delivery of what discovery would carry anyway.
 
 #### Endpoint: `<mip_url>/mip_connections/update`
 
@@ -1072,13 +1187,24 @@ None. The receiving node is identified by its `mip_url`.
 ```json
 {
   "node_profile": {
-    "mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-    "mip_url": "https://mip.example.org/api/mip/node/e82d40e9416304e8c72790b45b27a8e6",
+    "mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+    "mip_url": "https://mip.example.org/api/mip/node/963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
     "organization_legal_name": "Grand Lodge of Example",
     "contact_person": "Robert Brown",
     "contact_phone": "+1-555-222-3333",
     "organization_public_website": "https://www.example.org",
-    "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "identity_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "signing_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+    "signing_key_attestation": {
+      "mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+      "signing_public_key_fingerprint": "2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc",
+      "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"signing_public_key_fingerprint\":\"2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+      "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+      "issued_at": "2026-09-01T08:00:00Z"
+    },
+    "node_profile_document": "{\"type\":\"MIP_NODE_PROFILE_V2\",\"mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"mip_url\":\"https://mip.example.org/api/mip/node/963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"organization_legal_name\":\"Grand Lodge of Example\",\"contact_person\":\"Robert Brown\",\"contact_phone\":\"+1-555-222-3333\",\"organization_public_website\":\"https://www.example.org\",\"identity_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_key_attestation_document\":\"{\\\"type\\\":\\\"MIP_SIGNING_KEY_ATTESTATION_V2\\\",\\\"mip_identifier\\\":\\\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\\\",\\\"signing_public_key_fingerprint\\\":\\\"2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc\\\",\\\"issued_at\\\":\\\"2026-09-01T08:00:00Z\\\"}\",\"signing_key_attestation_signature\":\"h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...\",\"issued_at\":\"2026-09-20T10:00:00Z\"}",
+    "node_profile_signature": "q3Lm8VbT2wYrN6kDf0xHs9JcA4eZpU7iG1oWtB5yKvR2...",
+    "issued_at": "2026-09-20T10:00:00Z",
     "gdpr_metadata": {
       "controller": { "role": "controller", "name": "Grand Lodge of Example" },
       "processors": [
@@ -1099,9 +1225,13 @@ None. The receiving node is identified by its `mip_url`.
 
 An update MAY change `organization_legal_name`, `contact_person`, `contact_phone`,
 `organization_public_website`, `mip_url`, and `gdpr_metadata`. It MUST NOT change
-`mip_identifier` or `public_key`; the receiver MUST ignore those two fields in an update and
-keep the values it holds. A node's identity is its identifier and its key, and neither is
-changed by telling a peer.
+`mip_identifier`, `identity_public_key`, `signing_public_key`, or `signing_key_attestation`;
+an update whose keys differ from those the receiver holds is answered `422`
+`public_key_mismatch` and changes nothing. A node's identity is its identifier and its keys,
+and none of them is changed by telling a peer. The receiver verifies the profile as
+specified under [Verifying a Node Profile](#verifying-a-node-profile), answering `422`
+`attestation_invalid` when it fails, and takes it when its `issued_at` is later than the
+one held; an older document changes nothing and is answered `200` all the same.
 
 #### Response Payload
 
@@ -1117,13 +1247,24 @@ changed by telling a peer.
       "daily_rate_limit": 100,
       "share_my_organization": true,
       "node_profile": {
-        "mip_identifier": "512ef14957203c6323e79937f3935708",
-        "mip_url": "https://mip.example.org/api/mip/node/512ef14957203c6323e79937f3935708",
+        "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+        "mip_url": "https://mip.example.org/api/mip/node/6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
         "organization_legal_name": "Grand Lodge of Elsewhere",
         "contact_person": "Mary Jones",
         "contact_phone": "+1-555-987-6543",
         "organization_public_website": "https://www.elsewhere.example",
-        "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "identity_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "signing_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+        "signing_key_attestation": {
+          "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+          "signing_public_key_fingerprint": "545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c",
+          "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"signing_public_key_fingerprint\":\"545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+          "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+          "issued_at": "2026-09-01T08:00:00Z"
+        },
+        "node_profile_document": "{\"type\":\"MIP_NODE_PROFILE_V2\",\"mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"mip_url\":\"https://mip.example.org/api/mip/node/6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"organization_legal_name\":\"Grand Lodge of Elsewhere\",\"contact_person\":\"Mary Jones\",\"contact_phone\":\"+1-555-987-6543\",\"organization_public_website\":\"https://www.elsewhere.example\",\"identity_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_key_attestation_document\":\"{\\\"type\\\":\\\"MIP_SIGNING_KEY_ATTESTATION_V2\\\",\\\"mip_identifier\\\":\\\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\\\",\\\"signing_public_key_fingerprint\\\":\\\"545df3e332e5a4a3c13c88df5c3f283aa8125a48f9ef0007aa1a863cf51d5e8c\\\",\\\"issued_at\\\":\\\"2026-09-01T08:00:00Z\\\"}\",\"signing_key_attestation_signature\":\"h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...\",\"issued_at\":\"2026-09-01T08:05:00Z\"}",
+        "node_profile_signature": "q3Lm8VbT2wYrN6kDf0xHs9JcA4eZpU7iG1oWtB5yKvR2...",
+        "issued_at": "2026-09-01T08:05:00Z",
         "gdpr_metadata": {
           "controller": { "role": "controller", "name": "Grand Lodge of Elsewhere" },
           "processors": [
@@ -1141,8 +1282,9 @@ changed by telling a peer.
 
 The response has the same shape as the Connection Request response: the connection's
 `status`, `authentication_type`, `daily_rate_limit`, and `share_my_organization`, and the
-receiving node's own current profile including its `gdpr_metadata`. The sender updates its record of the receiver from it,
-subject to the same rule: `mip_identifier` and `public_key` in the response are not applied.
+receiving node's own current profile including its `gdpr_metadata`. The sender updates its record of the receiver from it
+under the same rules: the profile is verified, taken when newer than the one held, and the
+keys and signing key attestation are never changed.
 
 ### Shared Nodes
 
@@ -1152,9 +1294,10 @@ it is used in three situations:
 1. After approving a connection, the approver sends the newly approved node every node it may
    share.
 2. After approving a connection, and again whenever it issues or renews an endorsement of a
-   node it may share, the endorser sends each of its other sharing connections that node, as a
-   batch of one carrying the endorsement. This is how one node's vouching reaches the rest of
-   its connections, and keeps reaching them as endorsements are renewed.
+   node it may share, the approver sends each of its other sharing connections that node, as
+   a batch of one carrying the endorsements it holds and has verified for that node, its own
+   first when it has one. This is how one node's vouching reaches the rest of its
+   connections, and keeps reaching them as endorsements are renewed.
 3. In answer to a [Share Request](#share-request), the receiver of that request sends the
    requester every node it may share.
 
@@ -1174,19 +1317,29 @@ None. The receiving node is identified by its `mip_url`.
 {
   "nodes": [
     {
-      "mip_identifier": "7c1d9a2f4b6e8d0c3a5f7e9b1d3c5a7e",
-      "mip_url": "https://mip.example.org/api/mip/node/7c1d9a2f4b6e8d0c3a5f7e9b1d3c5a7e",
+      "mip_identifier": "f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c",
+      "mip_url": "https://mip.example.org/api/mip/node/f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c",
       "organization_legal_name": "Grand Lodge of Yonder",
       "contact_person": "Alice Green",
       "contact_phone": "+1-555-444-5555",
       "organization_public_website": "https://www.yonder.example",
-      "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+      "identity_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+      "signing_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+      "signing_key_attestation": {
+        "mip_identifier": "f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c",
+        "signing_public_key_fingerprint": "b2648436b11e1ec39774da9d04c41de60af3517e2ec3642c09475fb5a7e9b398",
+        "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c\",\"signing_public_key_fingerprint\":\"b2648436b11e1ec39774da9d04c41de60af3517e2ec3642c09475fb5a7e9b398\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+        "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+        "issued_at": "2026-09-01T08:00:00Z"
+      },
+      "node_profile_document": "{\"type\":\"MIP_NODE_PROFILE_V2\",\"mip_identifier\":\"f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c\",\"mip_url\":\"https://mip.example.org/api/mip/node/f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c\",\"organization_legal_name\":\"Grand Lodge of Yonder\",\"contact_person\":\"Alice Green\",\"contact_phone\":\"+1-555-444-5555\",\"organization_public_website\":\"https://www.yonder.example\",\"identity_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_key_attestation_document\":\"{\\\"type\\\":\\\"MIP_SIGNING_KEY_ATTESTATION_V2\\\",\\\"mip_identifier\\\":\\\"f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c\\\",\\\"signing_public_key_fingerprint\\\":\\\"b2648436b11e1ec39774da9d04c41de60af3517e2ec3642c09475fb5a7e9b398\\\",\\\"issued_at\\\":\\\"2026-09-01T08:00:00Z\\\"}\",\"signing_key_attestation_signature\":\"h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...\",\"issued_at\":\"2026-09-01T08:05:00Z\"}",
+      "node_profile_signature": "q3Lm8VbT2wYrN6kDf0xHs9JcA4eZpU7iG1oWtB5yKvR2...",
+      "issued_at": "2026-09-01T08:05:00Z",
       "endorsements": [
         {
-          "endorser_mip_identifier": "512ef14957203c6323e79937f3935708",
-          "endorsed_mip_identifier": "7c1d9a2f4b6e8d0c3a5f7e9b1d3c5a7e",
-          "endorsed_public_key_fingerprint": "f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c",
-          "endorsement_document": "{\"type\":\"MIP_ENDORSEMENT_V2\",\"endorser_mip_identifier\":\"512ef14957203c6323e79937f3935708\",\"endorsed_mip_identifier\":\"7c1d9a2f4b6e8d0c3a5f7e9b1d3c5a7e\",\"endorsed_public_key_fingerprint\":\"f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c\",\"issued_at\":\"2026-03-01T09:30:00Z\",\"expires_at\":\"2027-03-01T09:30:00Z\"}",
+          "endorser_mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+          "endorsed_mip_identifier": "f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c",
+          "endorsement_document": "{\"type\":\"MIP_ENDORSEMENT_V2\",\"endorser_mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"endorsed_mip_identifier\":\"f0f3393fdc0ac94a875f43872a0fdddc2b7e6a1c9d4f8e3b5a2c7d9e1f4b6a8c\",\"issued_at\":\"2026-03-01T09:30:00Z\",\"expires_at\":\"2027-03-01T09:30:00Z\"}",
           "endorsement_signature": "g2FAOk4wXU6+j85b+1kpz3kgRH+ZmFIk2YkNkCP5GP8l...",
           "issued_at": "2026-03-01T09:30:00Z",
           "expires_at": "2027-03-01T09:30:00Z"
@@ -1203,7 +1356,7 @@ None. The receiving node is identified by its `mip_url`.
   - **endorsements**: REQUIRED, MAY be empty. Endorsements of that node which the sender
     holds and has verified. See Selecting Endorsements to Relay.
   - **revocations**: REQUIRED, MAY be empty. Verified revocations of endorsements of that
-    node which the sender holds as the deciding document for their triple, each in the full
+    node which the sender holds as the deciding document for their pair, each in the full
     payload form under [Endorsement Revocation](#endorsement-revocation). See Selecting
     Endorsements to Relay.
 
@@ -1240,39 +1393,52 @@ Each element carries at most five documents, endorsements and revocations togeth
 sender MUST relay only documents it has verified (see
 [Endorsement Verification](#endorsement-verification)) and MUST NOT relay an endorsement it
 holds as unverified, expired, or revoked, nor a revocation it holds as unverified. For each
-(endorser, endorsed node, fingerprint) the sender relays only the deciding document, the
+(endorser, endorsed node) the sender relays only the deciding document, the
 verified endorsement or revocation with the latest `issued_at`; a superseded document takes
 no place. A revocation is thus relayed in place of the endorsement it cancels, so that a node
 which received that endorsement second-hand learns it was withdrawn. When the sender has issued its own
 endorsement or revocation of the node, that document is included first; the remaining places
 are filled with the other verified documents, newest `issued_at` first, up to five in total.
 
-The limits bound the size of a batch: twenty nodes, each with a key of up to 8192 bits and
-five documents, fit within a 256 KiB request. A revocation is smaller than the endorsement
+The limits bound the size of a batch: twenty nodes, each with two keys of up to 8192 bits,
+a signing key attestation, a node profile document with its signature, and five documents,
+fit within a 512 KiB request. A revocation is smaller than the endorsement
 it replaces, so the bound holds whatever the mix.
 
 #### Processing Shared Nodes
 
-The receiver records each element as a known node, or updates its existing record, and
-stores the relayed endorsements and revocations as specified under
-[Endorsement Storage](#endorsement-storage).
-Nothing in a shared element is proof of the node's identity: the receiver has only the
-sender's word for the profile, and the endorsements verify only where the receiver holds the
-endorser's key. Whether the receiver then attempts a connection to a known node, and on what
+The receiver verifies each element as specified under
+[Verifying a Node Profile](#verifying-a-node-profile) and stores nothing from an element
+that fails. A verified element is the node's own signed description of itself, so the
+receiver takes it on that node's word and not the sender's: when its node profile document
+is newer than the one the receiver holds for that identifier, whether as a known node or as
+a connection in any state, it replaces the held profile; when it is older, it changes
+nothing. An element whose keys differ from those the receiver holds for the identifier is
+not stored, since no key changes in this version. The receiver records an element it has
+no record of as a known node, and stores the relayed endorsements and revocations as
+specified under [Endorsement Storage](#endorsement-storage); those verify only where the
+receiver holds the endorser's key. Nothing in an element is taken on the sender's word. Whether the receiver then attempts a connection to a known node, and on what
 conditions, is its own policy. A receiver that automatically requests connections to shared
 nodes SHOULD require that the node carry a verified endorsement from an endorser it trusts.
 
 #### Late Automatic Approval
 
-An endorsement arriving in a Shared Nodes batch can complete a pending connection. When the
-receiver holds a `PENDING` connection request from the endorsed node and a newly verified
-endorsement of that node satisfies its automatic approval policy, the receiver MAY approve
-that connection and send the endorsed node a [Connection Approved](#connection-approved)
-request with `authentication_type` `ENDORSEMENT` and no `endorsement`. A `REOPENED` record
-is not eligible; a person declined or revoked it, and only a person approves it again. See
-Repeated Requests under [Connection Request](#connection-request). This is the one place a
-late approval arises: the Endorsements endpoint carries endorsements of the receiver itself,
-which cannot complete a request from a third node.
+An endorsement that becomes verified after a request is pending can complete it. When the
+receiver holds a `PENDING` connection request from a node and that node's verified
+endorsements come to satisfy the receiver's automatic approval policy, the receiver MAY
+approve the connection and send the node a [Connection Approved](#connection-approved)
+request with `authentication_type` `ENDORSEMENT` and no `endorsement`. It does not matter
+when the endorsement arrived or on which leg: one newly verified on arrival in a Shared
+Nodes batch, or one the receiver had held as unverified, presented in the Connection
+Request itself or relayed earlier, and verified when its endorser became an `ACTIVE`
+connection (see [Endorsement Storage](#endorsement-storage)), counts the same. The web of
+trust does not care when it learned. A receiver therefore evaluates its pending requests
+both when a batch arrives and when a connection becomes `ACTIVE`, after verifying that
+endorser's held documents. The expiry check applies at the moment of verification. A
+`REOPENED` record is not eligible; a person declined or revoked it, and only a person
+approves it again. See Repeated Requests under [Connection Request](#connection-request).
+The Endorsements endpoint carries endorsements of the receiver itself, which cannot complete
+a request from a third node.
 
 ### Share Request
 
@@ -1362,10 +1528,9 @@ None. The receiving node is identified by its `mip_url`.
 
 ```json
 {
-  "endorser_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-  "endorsed_mip_identifier": "512ef14957203c6323e79937f3935708",
-  "endorsed_public_key_fingerprint": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
-  "endorsement_document": "{\"type\":\"MIP_ENDORSEMENT_V2\",\"endorser_mip_identifier\":\"e82d40e9416304e8c72790b45b27a8e6\",\"endorsed_mip_identifier\":\"512ef14957203c6323e79937f3935708\",\"endorsed_public_key_fingerprint\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"issued_at\":\"2026-09-14T12:05:00Z\",\"expires_at\":\"2027-09-14T12:05:00Z\"}",
+  "endorser_mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "endorsed_mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+  "endorsement_document": "{\"type\":\"MIP_ENDORSEMENT_V2\",\"endorser_mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"endorsed_mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"issued_at\":\"2026-09-14T12:05:00Z\",\"expires_at\":\"2027-09-14T12:05:00Z\"}",
   "endorsement_signature": "g2FAOk4wXU6+j85b+1kpz3kgRH+ZmFIk2YkNkCP5GP8l...",
   "issued_at": "2026-09-14T12:05:00Z",
   "expires_at": "2027-09-14T12:05:00Z"
@@ -1374,19 +1539,21 @@ None. The receiving node is identified by its `mip_url`.
 
 The payload is an [Endorsement](#endorsement) in the full payload form.
 
-The sending node MUST be the endorser: `endorser_mip_identifier` MUST equal the
-`X-MIP-MIP-IDENTIFIER` header. Otherwise the request is answered `400`
-`endorsement_sender_mismatch`. The endorsed node MUST be the receiver: `endorsed_mip_identifier`
-MUST equal the receiving node's identifier, otherwise `400` `endorsement_invalid`. A third
-party's endorsement, or an endorsement of a third node, reaches a node only inside a
+The receiver checks, in this order, after the Order of Checks:
+
+1. the sending node is the endorser: `endorser_mip_identifier` equals the
+   `X-MIP-MIP-IDENTIFIER` header; otherwise `400` `endorsement_sender_mismatch`;
+2. the endorsed node is the receiver: `endorsed_mip_identifier` equals the receiving node's
+   identifier; otherwise `400` `endorsement_invalid`;
+3. the endorsement verifies under [Endorsement Verification](#endorsement-verification);
+   otherwise `400` `endorsement_invalid`, and it is not stored.
+
+A third party's endorsement, or an endorsement of a third node, reaches a node only inside a
 Connection Request or a Shared Nodes batch, never here; see
 [Late Automatic Approval](#late-automatic-approval) for what a relayed endorsement can do.
-
-Because the sender is the endorser and is an `ACTIVE` connection, the receiver holds its key,
-and every endorsement arriving here is either verified or rejected; none is stored as
-unverified. An endorsement that fails any step of
-[Endorsement Verification](#endorsement-verification) is answered `400` `endorsement_invalid`
-and is not stored.
+Because the sender is the endorser and is an `ACTIVE` connection, the receiver holds its
+key, and every endorsement arriving here is either verified or rejected; none is stored as
+unverified.
 
 #### Response Payload
 
@@ -1405,8 +1572,8 @@ and is not stored.
   ordering rule in [Endorsement Storage](#endorsement-storage); the answer is `200` either
   way, and a verified endorsement older than the document held is never an error. A re-sent
   endorsement identical to one already stored is answered `200` and changes nothing. An endorsement carries no
-  identifier of its own: it is named by its endorser, endorsed node, fingerprint, and
-  `issued_at`, all of which are inside the signed document.
+  identifier of its own: it is named by its endorser, endorsed node, and `issued_at`, all of
+  which are inside the signed document.
 
 ### Endorsement Revoked
 
@@ -1443,10 +1610,9 @@ None. The receiving node is identified by its `mip_url`.
 
 ```json
 {
-  "endorser_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-  "endorsed_mip_identifier": "512ef14957203c6323e79937f3935708",
-  "endorsed_public_key_fingerprint": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
-  "revocation_document": "{\"type\":\"MIP_ENDORSEMENT_REVOCATION_V2\",\"endorser_mip_identifier\":\"e82d40e9416304e8c72790b45b27a8e6\",\"endorsed_mip_identifier\":\"512ef14957203c6323e79937f3935708\",\"endorsed_public_key_fingerprint\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"issued_at\":\"2026-11-02T09:00:00Z\"}",
+  "endorser_mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "endorsed_mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+  "revocation_document": "{\"type\":\"MIP_ENDORSEMENT_REVOCATION_V2\",\"endorser_mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"endorsed_mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"issued_at\":\"2026-11-02T09:00:00Z\"}",
   "revocation_signature": "k9PZlQ2c0R7v+M4xWb1nJ6yTgE8sHf3aLu5dVq0pXo2i...",
   "issued_at": "2026-11-02T09:00:00Z"
 }
@@ -1454,23 +1620,26 @@ None. The receiving node is identified by its `mip_url`.
 
 The payload is an [Endorsement Revocation](#endorsement-revocation) in the full payload form.
 
-The sending node MUST be the endorser: `endorser_mip_identifier` MUST equal the
-`X-MIP-MIP-IDENTIFIER` header. Otherwise the request is answered `400`
-`endorsement_sender_mismatch`. A third party's revocation reaches a node only inside a Shared
-Nodes batch, never here.
+The receiver checks, in this order, after the Order of Checks:
+
+1. the sending node is the endorser: `endorser_mip_identifier` equals the
+   `X-MIP-MIP-IDENTIFIER` header; otherwise `400` `endorsement_sender_mismatch`;
+2. when the endorsed node is not the receiver, the sender is an `ACTIVE` connection;
+   otherwise `403` `connection_not_active`, since a node acts on statements about third
+   parties only from nodes it currently trusts;
+3. the revocation verifies under [Endorsement Verification](#endorsement-verification) as
+   applied to revocations; otherwise `400` `endorsement_invalid`, and it is not stored.
+
+A third party's revocation reaches a node only inside a Shared Nodes batch, never here.
 
 This endpoint is exempt from the `ACTIVE` check in the Order of Checks, so that the endorsed
-node can be told whatever the state of its connection with the endorser. A receiver keeps the
-sender's record, and the key in it, in every state, so a revocation of an endorsement of the
-receiver itself is verified with that key whatever the connection's state, and the receiver
-then stops presenting that endorsement in its own Connection Requests. A revocation of an
-endorsement of any other node is accepted only from an `ACTIVE` connection; from a sender
-that is not `ACTIVE` it is answered `403` `connection_not_active`, since a node acts on
-statements about third parties only from nodes it currently trusts. Because the sender is
-the endorser and the receiver holds its key, every revocation accepted here is either
-verified or rejected; none is stored as unverified. A revocation that fails any step of
-[Endorsement Verification](#endorsement-verification), as applied to revocations, is
-answered `400` `endorsement_invalid` and is not stored.
+node can be told whatever the state of its connection with the endorser; check 2 above is
+what stands in for it. A receiver keeps the sender's record, and the keys in it, in every
+state, so a revocation of an endorsement of the receiver itself is verified with the
+sender's signing key whatever the connection's state, and the receiver then stops
+presenting that endorsement in its own Connection Requests. Because the sender is the
+endorser and the receiver holds its key, every revocation accepted here is either verified
+or rejected; none is stored as unverified.
 
 #### Response Payload
 
@@ -1542,9 +1711,11 @@ None. The receiving node is identified by its `mip_url`.
 
 A request MUST contain `member_number`, or both `first_name` and `last_name`, and MAY
 contain all three. A request that meets neither minimum is answered `422`
-`validation_failed` naming the missing field. A request without `shared_identifier` is
-answered `400` `shared_identifier_missing`. Fields the requester did not fill in are omitted,
-not sent as `null`.
+`validation_failed` naming `member_number`. A request without `shared_identifier` is
+answered `400` `shared_identifier_missing`. A request whose `shared_identifier` the receiver
+already holds is a repeat: it is answered `200` `PENDING` and changes nothing, so that a
+requester whose response was lost can send it again. Fields the requester did not fill in
+are omitted, not sent as `null`.
 
 How the responder matches the fields it receives against its members is the responder's own
 business and is not specified here. As a best practice, when a request carries both a member
@@ -1692,7 +1863,9 @@ A reply declining the search:
 - **data.status**: `APPROVED` when the responder ran the search, `DECLINED` when it refused
   to.
 - **data.matches**: present with `APPROVED`. The members matching the search, which MAY be
-  none. Each element:
+  none. In each element `first_name` and `last_name` are REQUIRED; every other field is
+  OPTIONAL and omitted when the responder does not hold it, except where `null` is shown
+  below. A receiver MUST accept an element carrying only the required fields.
   - **member_number**: the member's number in the responding organization.
   - **first_name**, **last_name**, **birthdate**: identifying information.
   - **contact**: the member's contact information, or `null` when the responder holds none.
@@ -1735,9 +1908,9 @@ search was sent to a different connection than the one replying; and `409`
 
 ### Certificate of Good Standing Request
 
-Request a certificate of good standing for a person from a connected organization. The
-certificate is the exchange that supports a person moving between organizations: it is
-comprehensive enough for the requesting organization to process the person as a new or
+Request a Certificate of Good Standing for a person from a connected organization. The
+Certificate of Good Standing is the exchange that supports a person moving between
+organizations: it is comprehensive enough for the requesting organization to process the person as a new or
 affiliating member. The request is queued on the responding node and answered through
 [Certificate of Good Standing Reply](#certificate-of-good-standing-reply).
 
@@ -1775,9 +1948,11 @@ None. The receiving node is identified by its `mip_url`.
 The fields describe the person as the responding organization knows them, since the person
 often has no record yet in the requesting organization. The same minimum applies as for a
 Member Search Request: `member_number`, or both `first_name` and `last_name`, and MAY
-contain all three; otherwise `422` `validation_failed`. A request without `shared_identifier`
-is answered `400` `shared_identifier_missing`. Unfilled fields are omitted. The same
-guidance on matching applies as for a Member Search Request.
+contain all three; otherwise `422` `validation_failed` naming `member_number`. A request
+without `shared_identifier` is answered `400` `shared_identifier_missing`, and one whose
+identifier the receiver already holds is answered `200` `PENDING` and changes nothing.
+Unfilled fields are omitted. The same guidance on matching applies as for a Member Search
+Request.
 
 #### Response Payload
 
@@ -1793,13 +1968,13 @@ guidance on matching applies as for a Member Search Request.
 }
 ```
 
-- **data.status**: `PENDING`. The certificate or decline is delivered through Certificate
-  of Good Standing Reply.
+- **data.status**: `PENDING`. The Certificate of Good Standing or decline is delivered
+  through Certificate of Good Standing Reply.
 - **data.shared_identifier**: the identifier from the request.
 
 ### Certificate of Good Standing Reply
 
-Deliver a certificate of good standing, or a decline, to the node that requested it.
+Deliver a Certificate of Good Standing, or a decline, to the node that requested it.
 
 #### Endpoint: `<mip_url>/certificates_of_good_standing/reply`
 
@@ -1813,7 +1988,7 @@ None. The receiving node is identified by its `mip_url`.
 
 #### Reply Body
 
-A reply carrying a certificate:
+A reply carrying a Certificate of Good Standing:
 
 ```json
 {
@@ -1829,7 +2004,7 @@ A reply carrying a certificate:
       "issued_at": "2026-09-14T14:30:00Z",
       "valid_until": "2026-12-13T14:30:00Z",
       "issuing_organization": {
-        "mip_identifier": "512ef14957203c6323e79937f3935708",
+        "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
         "organization_legal_name": "Grand Lodge of Elsewhere"
       },
       "member_profile": {
@@ -1899,13 +2074,16 @@ A reply declining the request:
 ```
 
 - **meta.succeeded**: `true`. A decline is a completed request, not a failure.
-- **data.shared_identifier**: the identifier from the certificate request. It correlates the
-  reply with the request and is not the certificate's identifier.
-- **data.status**: the outcome of the request: `APPROVED` when a certificate was issued,
-  `DECLINED` when the request was refused. It says nothing about the member's standing.
-- **data.certificate**: present with `APPROVED`. The certificate itself; see
-  [Certificate](#certificate). Its `good_standing` is the member's standing as certified,
-  and an issued certificate MAY say `false`.
+- **data.shared_identifier**: the identifier from the Certificate of Good Standing Request.
+  It correlates the reply with the request and is not the Certificate of Good Standing's
+  identifier.
+- **data.status**: the outcome of the request: `APPROVED` when a Certificate of Good
+  Standing was issued, `DECLINED` when the request was refused. It says nothing about the
+  member's standing.
+- **data.certificate**: present with `APPROVED`. The Certificate of Good Standing itself;
+  see [Certificate of Good Standing](#certificate-of-good-standing). Its `good_standing` is
+  the member's standing as certified, and an issued Certificate of Good Standing MAY say
+  `false`.
 - **data.reason**: present with `DECLINED`. An explanation for a person to read.
 
 #### Acknowledgement
@@ -1939,17 +2117,31 @@ this document shows it so.
 A Node Profile describes one node. It is the value of `node_profile` in the Connection
 Request, Connection Approved, and Organization Update payloads and their responses, and the
 shape of each element of `nodes` in a Shared Nodes batch. A Node Profile never contains other
-nodes.
+nodes. Its facts are carried in a node profile document signed by the node it describes, so
+that a receiver believes a profile only on the word of that node, whichever node delivered
+it; the fields are copied out beside the document so that a receiver can index the profile
+without parsing it.
 
 ```json
 {
-  "mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-  "mip_url": "https://mip.example.org/api/mip/node/e82d40e9416304e8c72790b45b27a8e6",
+  "mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "mip_url": "https://mip.example.org/api/mip/node/963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
   "organization_legal_name": "Grand Lodge of Example",
   "contact_person": "John Smith",
   "contact_phone": "+1-555-123-4567",
   "organization_public_website": "https://www.example.org",
-  "public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+  "identity_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+  "signing_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+  "signing_key_attestation": {
+    "mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+    "signing_public_key_fingerprint": "2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc",
+    "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"signing_public_key_fingerprint\":\"2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+    "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+    "issued_at": "2026-09-01T08:00:00Z"
+  },
+  "node_profile_document": "{\"type\":\"MIP_NODE_PROFILE_V2\",\"mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"mip_url\":\"https://mip.example.org/api/mip/node/963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"organization_legal_name\":\"Grand Lodge of Example\",\"contact_person\":\"John Smith\",\"contact_phone\":\"+1-555-123-4567\",\"organization_public_website\":\"https://www.example.org\",\"identity_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_public_key\":\"-----BEGIN PUBLIC KEY-----\\nMIICIjANBgkqh...\\n-----END PUBLIC KEY-----\",\"signing_key_attestation_document\":\"{\\\"type\\\":\\\"MIP_SIGNING_KEY_ATTESTATION_V2\\\",\\\"mip_identifier\\\":\\\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\\\",\\\"signing_public_key_fingerprint\\\":\\\"2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc\\\",\\\"issued_at\\\":\\\"2026-09-01T08:00:00Z\\\"}\",\"signing_key_attestation_signature\":\"h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...\",\"issued_at\":\"2026-09-01T08:05:00Z\"}",
+  "node_profile_signature": "q3Lm8VbT2wYrN6kDf0xHs9JcA4eZpU7iG1oWtB5yKvR2...",
+  "issued_at": "2026-09-01T08:05:00Z",
   "gdpr_metadata": {
     "controller": { "role": "controller", "name": "Grand Lodge of Example" },
     "processors": [
@@ -1970,7 +2162,21 @@ nodes.
 - **contact_person**: REQUIRED. The person to contact about MIP matters.
 - **contact_phone**: REQUIRED. That person's telephone number.
 - **organization_public_website**: OPTIONAL. The organization's public website.
-- **public_key**: REQUIRED. The node's RSA public key in PEM format.
+- **identity_public_key**: REQUIRED. The node's identity public key in PEM format. Its
+  fingerprint MUST equal `mip_identifier`; see [MIP Identifier](#mip-identifier).
+- **signing_public_key**: REQUIRED. The node's signing public key in PEM format, the key
+  that verifies its requests.
+- **signing_key_attestation**: REQUIRED. The node's
+  [signing key attestation](#signing-key-attestation) in its full payload form, binding the
+  signing key to the identifier under the identity key.
+- **node_profile_document**: REQUIRED. The signed document, as a string; see
+  [Node Profile Document](#node-profile-document). Every field above MUST equal its value in
+  the document.
+- **node_profile_signature**: REQUIRED. The node's signing key's RSA signature
+  (RSASSA-PKCS1-v1_5 with SHA-256) over `node_profile_document`, Base64 encoded without
+  line breaks.
+- **issued_at**: REQUIRED. When the document was issued, copied from it. For one identifier
+  the document with the latest `issued_at` is the node's profile.
 - **gdpr_metadata**: REQUIRED when a node describes itself, which it does in the Connection
   Request, Connection Approved, and Organization Update payloads and in the Connection
   Request, Connection Status, and Organization Update responses. MUST NOT be present in a
@@ -1980,7 +2186,82 @@ nodes.
 `share_my_organization` is not part of the profile. It is a flag on the Connection Request
 and Connection Approved payloads and a connection attribute in the Connection Request,
 Connection Status, and Organization Update responses, because it is a term of the connection
-rather than a fact about the node.
+rather than a fact about the node. `gdpr_metadata` is beside the document rather than inside
+it, since it is a declaration a node makes to each peer directly and not a public fact; see
+[GDPR Metadata](#gdpr-metadata).
+
+### Node Profile Document
+
+The node profile document is the JSON object the node signs with its signing key:
+
+```json
+{
+  "type": "MIP_NODE_PROFILE_V2",
+  "mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "mip_url": "https://mip.example.org/api/mip/node/963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "organization_legal_name": "Grand Lodge of Example",
+  "contact_person": "John Smith",
+  "contact_phone": "+1-555-123-4567",
+  "organization_public_website": "https://www.example.org",
+  "identity_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+  "signing_public_key": "-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqh...\n-----END PUBLIC KEY-----",
+  "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"signing_public_key_fingerprint\":\"2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+  "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+  "issued_at": "2026-09-01T08:05:00Z"
+}
+```
+
+- **type**: `MIP_NODE_PROFILE_V2`.
+- **mip_identifier** through **organization_public_website**: the profile's fields, as
+  defined above. `organization_public_website` is omitted from the document when the node
+  has none, and then from the profile too.
+- **identity_public_key**, **signing_public_key**: the node's two public keys in PEM format.
+- **signing_key_attestation_document**, **signing_key_attestation_signature**: the node's
+  signing key attestation, as the two strings; the profile also carries it copied out in
+  its full payload form.
+- **issued_at**: when this document was issued. A node issues a new document whenever a
+  fact in it changes, with a later `issued_at`; there is no `expires_at`.
+
+The node serializes the document once, as compact JSON with the fields in the order shown,
+signs that exact string with its signing private key, and transmits the same string as
+`node_profile_document`. A receiver verifies the string as received and MUST NOT
+re-serialize it before verifying. A receiver holds one profile per identifier, the verified
+document with the latest `issued_at`; a document older than the one held changes nothing,
+whichever leg it arrives on.
+
+### Verifying a Node Profile
+
+A receiver verifies every node profile before storing it, on every leg that carries one:
+a Connection Request, a Connection Approved, an Organization Update, a Shared Nodes
+element, and the Connection Request, Connection Status, and Organization Update responses.
+It:
+
+1. checks that every copied field in the profile equals its value in
+   `node_profile_document`, and that `type` is `MIP_NODE_PROFILE_V2`;
+2. checks that the fingerprint of `identity_public_key` equals `mip_identifier`, and that
+   `mip_identifier` is the identifier the receiver expects: the `X-MIP-MIP-IDENTIFIER`
+   header on a request, the identifier it addressed on a response, and the element's own
+   on a Shared Nodes element;
+3. verifies the signing key attestation as specified under
+   [Verifying a Signing Key Attestation](#verifying-a-signing-key-attestation), which ties
+   `signing_public_key` to the identifier;
+4. verifies `node_profile_signature` over `node_profile_document` with
+   `signing_public_key`;
+5. when it already holds keys for that identifier, checks that both keys and the signing
+   key attestation are the ones it holds. Neither key can change in this version; see
+   [Key Rotation](#key-rotation).
+
+A profile that passes every step is verified, and the receiver stores it when its
+`issued_at` is later than the one it holds. A profile that fails any step is invalid: on a
+Connection Request the request is answered `422` `attestation_invalid` and nothing is
+stored (a key mismatch at step 5 is `422` `public_key_mismatch`; see
+[Processing a Connection Request](#processing-a-connection-request)); on a Connection
+Approved or an Organization Update the same codes apply and the notification or update
+changes nothing; in a Shared Nodes element the element is not stored; on a response the
+request is treated as failed and shown to a person, and nothing is recorded from it. The
+chain a receiver walks, identity key to identifier, identity key to signing key, signing key
+to profile, needs nothing but the profile itself, so a profile is as trustworthy from a
+relay as from the node, and a relay cannot alter, substitute, or roll back any of it.
 
 ### Connection Attributes
 
@@ -2047,10 +2328,117 @@ declarant has no relationship with. Nothing is lost by the restriction: a node n
 processing chain only once it is about to exchange member data with that peer, and every
 direct leg carries the declaration.
 
+## Signing Key Attestation
+
+A signing key attestation is a node's own signed statement, made with its identity key, that
+a given signing key speaks for it. Every node has one. It travels in the node's profile
+wherever the profile does (see [Node Profile](#node-profile)), so that any node holding the
+profile can check for itself that the signing key belongs to the identifier, without taking
+anyone's word for it.
+
+### Signing Key Attestation Document
+
+The document is the JSON object the identity key signs:
+
+```json
+{
+  "type": "MIP_SIGNING_KEY_ATTESTATION_V2",
+  "mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "signing_public_key_fingerprint": "2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc",
+  "issued_at": "2026-09-01T08:00:00Z"
+}
+```
+
+- **type**: `MIP_SIGNING_KEY_ATTESTATION_V2`.
+- **mip_identifier**: the node's identifier, which is the fingerprint of its identity public
+  key; see [MIP Identifier](#mip-identifier).
+- **signing_public_key_fingerprint**: the [fingerprint](#public-key-fingerprint) of the
+  signing public key the signing key attestation vouches for. The fingerprint rather than the key
+  itself, so that the signed string stays small; the profile carries the key.
+- **issued_at**: when the signing key attestation was issued. There is no `expires_at` in this version.
+
+The node serializes the document once, as compact JSON with the fields in the order shown,
+signs that exact string with its identity private key, and transmits the same string as
+`signing_key_attestation_document`. A receiver verifies the string as received and MUST NOT
+re-serialize it before verifying. For one identifier the signing key attestation with the latest
+`issued_at` is the current one; in this version a node's signing key attestation does not change once
+issued, and the ordering is what a later version will use to replace a signing key (see
+[Key Rotation](#key-rotation)).
+
+### Full Signing Key Attestation Payload
+
+Wherever a signing key attestation travels, it is the value of `signing_key_attestation` in
+a node profile and takes this form:
+
+```json
+{
+  "mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "signing_public_key_fingerprint": "2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc",
+  "signing_key_attestation_document": "{\"type\":\"MIP_SIGNING_KEY_ATTESTATION_V2\",\"mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"signing_public_key_fingerprint\":\"2c5cee3bab385328c69f32440d438abbe451c1f1346395726719a4b1ccb47ecc\",\"issued_at\":\"2026-09-01T08:00:00Z\"}",
+  "signing_key_attestation_signature": "h7Kq2ZtV9wPnR4cLbX0sJm1eYfG3aUoD8iTvN5rCqW6k...",
+  "issued_at": "2026-09-01T08:00:00Z"
+}
+```
+
+- **mip_identifier**, **signing_public_key_fingerprint**, **issued_at**: copied from the
+  document so that a receiver can index the signing key attestation without parsing the document. Each
+  MUST equal the value in the document.
+- **signing_key_attestation_document**: the signed document, as a string.
+- **signing_key_attestation_signature**: the identity key's RSA signature
+  (RSASSA-PKCS1-v1_5 with SHA-256) over `signing_key_attestation_document`, Base64 encoded
+  without line breaks.
+
+### Issuing a Signing Key Attestation
+
+```ruby
+require 'openssl'
+require 'base64'
+require 'json'
+require 'time'
+
+document = {
+  :type => 'MIP_SIGNING_KEY_ATTESTATION_V2',
+  :mip_identifier => OpenSSL::Digest::SHA256.hexdigest(identity_key.public_key.to_der),
+  :signing_public_key_fingerprint => OpenSSL::Digest::SHA256.hexdigest(signing_key.public_key.to_der),
+  :issued_at => Time.now.utc.iso8601
+}.to_json
+
+signature = Base64.strict_encode64(
+  identity_key.sign(OpenSSL::Digest::SHA256.new, document)
+)
+```
+
+### Verifying a Signing Key Attestation
+
+To verify a signing key attestation presented in a node profile a receiver:
+
+1. parses `signing_key_attestation_document` and checks that `type` is
+   `MIP_SIGNING_KEY_ATTESTATION_V2`;
+2. checks that `mip_identifier`, `signing_public_key_fingerprint`, and `issued_at` in the
+   payload equal those in the document;
+3. checks that the fingerprint of the profile's `identity_public_key` equals
+   `mip_identifier` in the document and in the profile;
+4. verifies `signing_key_attestation_signature` over `signing_key_attestation_document`
+   with the profile's `identity_public_key`;
+5. checks that the fingerprint of the profile's `signing_public_key` equals
+   `signing_public_key_fingerprint`.
+
+A signing key attestation that passes every step is verified, and the receiver may then
+trust that requests verifying under `signing_public_key` come from the node named by
+`mip_identifier`. One that fails any step is invalid, and the node profile carrying it
+fails with it; see [Verifying a Node Profile](#verifying-a-node-profile) for what follows
+on each leg. No connection is needed to verify a signing key attestation, since everything
+it needs is in the profile that carries it.
+
 ## Member Profile
 
 The Member Profile gives comprehensive information about a member. It is the value of
-`member_profile` in a [Certificate](#certificate).
+`member_profile` in a [Certificate of Good Standing](#certificate-of-good-standing).
+Organizations hold very different amounts of information about their members, and the
+profile carries what the issuer has: `first_name`, `last_name`, and `group_status` with
+both its members are REQUIRED, and every other field is OPTIONAL and omitted when the
+issuer does not hold it, except where `null` is shown below. A receiver MUST accept a
+profile carrying only the required fields.
 
 ```json
 {
@@ -2138,9 +2526,9 @@ The labels in `status`, `affiliation_type`, `affiliation_status`, and `event_nam
 issuing organization's own. The protocol does not standardize terminology across
 organizations; the booleans beside the labels are what a receiving system can rely on.
 
-## Certificate
+## Certificate of Good Standing
 
-A certificate of good standing is the issuing organization's statement, at a point in time,
+A Certificate of Good Standing is the issuing organization's statement, at a point in time,
 of a member's standing. It is the value of `data.certificate` in an approved
 [Certificate of Good Standing Reply](#certificate-of-good-standing-reply).
 
@@ -2151,32 +2539,36 @@ of a member's standing. It is the value of `data.certificate` in an approved
   "issued_at": "2026-09-14T14:30:00Z",
   "valid_until": "2026-12-13T14:30:00Z",
   "issuing_organization": {
-    "mip_identifier": "512ef14957203c6323e79937f3935708",
+    "mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
     "organization_legal_name": "Grand Lodge of Elsewhere"
   },
   "member_profile": { "...": "see Member Profile" }
 }
 ```
 
-- **shared_identifier**: REQUIRED. A UUID minted by the issuer when the certificate is
-  issued. It identifies the certificate itself, distinct from the identifier of the request
-  that produced it, so that the certificate can be referred to later: to cite it when the
-  member affiliates, or to ask the issuer whether it still stands. This version of the
+- **shared_identifier**: REQUIRED. A UUID minted by the issuer when the Certificate of Good
+  Standing is issued. It identifies the Certificate of Good Standing itself, distinct from
+  the identifier of the request that produced it, so that it can be referred to later: to
+  cite it when the member affiliates, or to ask the issuer whether it still stands. This version of the
   protocol defines no request that takes it; it is a reference.
 - **good_standing**: REQUIRED. Whether the member is in good standing, as the issuing
   organization certifies it.
-- **issued_at**: REQUIRED. When the certificate was issued.
-- **valid_until**: REQUIRED. When the certificate ceases to be valid. How long a certificate
-  stays valid is the issuing organization's policy; 90 days from issue is one reasonable
-  choice.
+- **issued_at**: REQUIRED. When the Certificate of Good Standing was issued.
+- **valid_until**: REQUIRED. When the Certificate of Good Standing ceases to be valid. How
+  long one stays valid is the issuing organization's policy; 90 days from issue is one
+  reasonable choice.
 - **issuing_organization**: REQUIRED. The issuer's `mip_identifier` and
   `organization_legal_name`.
 - **member_profile**: REQUIRED. The member's [Member Profile](#member-profile) as of issue.
 
 ## Endorsement
 
-An endorsement is one node's signed statement that another node's identity is genuine and
-that a given public key belongs to it. Endorsements are the basis of the web of trust: a node
+An endorsement is one node's signed statement that another node's identity is genuine: that
+the organization named in that node's profile is the one behind its identifier. Since an
+identifier is the fingerprint of the node's identity key (see
+[MIP Identifier](#mip-identifier)), an endorsement is bound to one key by naming the node,
+and cannot be presented by the holder of any other key. Endorsements are the basis of the
+web of trust: a node
 that presents endorsements from endorsers a receiver trusts can be connected without a person
 at the receiver verifying its identity.
 
@@ -2187,9 +2579,8 @@ The endorsement document is the JSON object the endorser signs:
 ```json
 {
   "type": "MIP_ENDORSEMENT_V2",
-  "endorser_mip_identifier": "512ef14957203c6323e79937f3935708",
-  "endorsed_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-  "endorsed_public_key_fingerprint": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "endorser_mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+  "endorsed_mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
   "issued_at": "2026-09-14T12:00:00Z",
   "expires_at": "2027-09-14T12:00:00Z"
 }
@@ -2197,10 +2588,8 @@ The endorsement document is the JSON object the endorser signs:
 
 - **type**: `MIP_ENDORSEMENT_V2`.
 - **endorser_mip_identifier**: the MIP identifier of the node issuing the endorsement.
-- **endorsed_mip_identifier**: the MIP identifier of the node being endorsed.
-- **endorsed_public_key_fingerprint**: the [fingerprint](#public-key-fingerprint) of the
-  endorsed node's public key. It binds the endorsement to one key, so that an endorsement
-  cannot be presented with a different key.
+- **endorsed_mip_identifier**: the MIP identifier of the node being endorsed, which is the
+  fingerprint of its identity key.
 - **issued_at**: when the endorsement was issued.
 - **expires_at**: REQUIRED. When the endorsement expires. 365 days from issue is
   RECOMMENDED.
@@ -2209,32 +2598,6 @@ The endorser serializes the document once, as compact JSON with the fields in th
 shown, signs that exact string, and transmits the same string as `endorsement_document`.
 A receiver verifies the string as received and MUST NOT re-serialize it before verifying.
 
-### Public Key Fingerprint
-
-The fingerprint of a public key is the SHA-256 digest of the key's DER-encoded
-SubjectPublicKeyInfo, written as 64 lowercase hexadecimal characters with no separators.
-That is the value carried in endorsement documents and payloads, and it is compared by
-machines only.
-
-The **display form** of a fingerprint is its first 16 bytes written as 16 colon-separated
-pairs of lowercase hexadecimal characters:
-
-```
-96:3b:b5:ab:26:27:6a:4f:d5:ef:3f:20:a1:9a:62:62
-```
-
-The display form is what a person reads to another over the telephone when confirming a
-pending connection request. A system MUST show the display form wherever it shows a
-fingerprint to a person, so that both ends of the call see the same thing.
-
-```ruby
-require 'openssl'
-
-key = OpenSSL::PKey::RSA.new(public_key_pem)
-fingerprint = OpenSSL::Digest::SHA256.hexdigest(key.public_key.to_der)
-display_form = fingerprint[0, 32].scan(/../).join(":")
-```
-
 ### Full Endorsement Payload
 
 Wherever an endorsement travels, in a Connection Request, a Connection Approved payload, a
@@ -2242,20 +2605,18 @@ Shared Nodes batch, or at the Endorsements endpoint, it takes this form:
 
 ```json
 {
-  "endorser_mip_identifier": "512ef14957203c6323e79937f3935708",
-  "endorsed_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-  "endorsed_public_key_fingerprint": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
-  "endorsement_document": "{\"type\":\"MIP_ENDORSEMENT_V2\",\"endorser_mip_identifier\":\"512ef14957203c6323e79937f3935708\",\"endorsed_mip_identifier\":\"e82d40e9416304e8c72790b45b27a8e6\",\"endorsed_public_key_fingerprint\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"issued_at\":\"2026-09-14T12:00:00Z\",\"expires_at\":\"2027-09-14T12:00:00Z\"}",
+  "endorser_mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+  "endorsed_mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "endorsement_document": "{\"type\":\"MIP_ENDORSEMENT_V2\",\"endorser_mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"endorsed_mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"issued_at\":\"2026-09-14T12:00:00Z\",\"expires_at\":\"2027-09-14T12:00:00Z\"}",
   "endorsement_signature": "g2FAOk4wXU6+j85b+1kpz3kgRH+ZmFIk2YkNkCP5GP8l...",
   "issued_at": "2026-09-14T12:00:00Z",
   "expires_at": "2027-09-14T12:00:00Z"
 }
 ```
 
-- **endorser_mip_identifier**, **endorsed_mip_identifier**,
-  **endorsed_public_key_fingerprint**, **issued_at**, **expires_at**: copied from the
-  document so that a receiver can index the endorsement without parsing the document. Each
-  MUST equal the value in the document.
+- **endorser_mip_identifier**, **endorsed_mip_identifier**, **issued_at**, **expires_at**:
+  copied from the document so that a receiver can index the endorsement without parsing the
+  document. Each MUST equal the value in the document.
 - **endorsement_document**: the signed document, as a string.
 - **endorsement_signature**: the endorser's RSA signature (RSASSA-PKCS1-v1_5 with SHA-256)
   over `endorsement_document`, Base64 encoded without line breaks.
@@ -2273,7 +2634,6 @@ document = {
   :type => 'MIP_ENDORSEMENT_V2',
   :endorser_mip_identifier => my_mip_identifier,
   :endorsed_mip_identifier => their_mip_identifier,
-  :endorsed_public_key_fingerprint => their_public_key_fingerprint,
   :issued_at => issued_at.iso8601,
   :expires_at => (issued_at + 365 * 24 * 60 * 60).iso8601
 }.to_json
@@ -2291,17 +2651,15 @@ The revocation document is the JSON object the endorser signs:
 ```json
 {
   "type": "MIP_ENDORSEMENT_REVOCATION_V2",
-  "endorser_mip_identifier": "512ef14957203c6323e79937f3935708",
-  "endorsed_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-  "endorsed_public_key_fingerprint": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "endorser_mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+  "endorsed_mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
   "issued_at": "2026-11-02T09:00:00Z"
 }
 ```
 
 - **type**: `MIP_ENDORSEMENT_REVOCATION_V2`.
-- **endorser_mip_identifier**, **endorsed_mip_identifier**,
-  **endorsed_public_key_fingerprint**: as in the endorsement document. Together they name
-  the endorsement being withdrawn.
+- **endorser_mip_identifier**, **endorsed_mip_identifier**: as in the endorsement document.
+  Together they name the endorsement being withdrawn.
 - **issued_at**: when the revocation was issued. A revocation has no `expires_at`; it does
   not expire.
 
@@ -2312,10 +2670,9 @@ Endorsement Revoked endpoint or in a Shared Nodes batch, it takes this form:
 
 ```json
 {
-  "endorser_mip_identifier": "512ef14957203c6323e79937f3935708",
-  "endorsed_mip_identifier": "e82d40e9416304e8c72790b45b27a8e6",
-  "endorsed_public_key_fingerprint": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
-  "revocation_document": "{\"type\":\"MIP_ENDORSEMENT_REVOCATION_V2\",\"endorser_mip_identifier\":\"512ef14957203c6323e79937f3935708\",\"endorsed_mip_identifier\":\"e82d40e9416304e8c72790b45b27a8e6\",\"endorsed_public_key_fingerprint\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"issued_at\":\"2026-11-02T09:00:00Z\"}",
+  "endorser_mip_identifier": "6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df",
+  "endorsed_mip_identifier": "963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6",
+  "revocation_document": "{\"type\":\"MIP_ENDORSEMENT_REVOCATION_V2\",\"endorser_mip_identifier\":\"6460180794811daebea1cff1aca4c18145765f7f537f3c44e3894bf3a17ea4df\",\"endorsed_mip_identifier\":\"963bb5ab26276a4fd5ef3f20a19a62621221428dce3640b09eb2e7bce7ceefa6\",\"issued_at\":\"2026-11-02T09:00:00Z\"}",
   "revocation_signature": "k9PZlQ2c0R7v+M4xWb1nJ6yTgE8sHf3aLu5dVq0pXo2i...",
   "issued_at": "2026-11-02T09:00:00Z"
 }
@@ -2324,27 +2681,26 @@ Endorsement Revoked endpoint or in a Shared Nodes batch, it takes this form:
 The copied fields MUST equal the values in the document, as for an endorsement.
 `revocation_signature` is the endorser's signature over `revocation_document`, made as an
 endorsement signature is. A revocation carries no identifier of its own: it is named by its
-endorser, endorsed node, fingerprint, and `issued_at`, all inside the signed document, and
-two revocations with the same four are the same revocation.
+endorser, endorsed node, and `issued_at`, all inside the signed document, and two
+revocations with the same three are the same revocation.
 
 ### Endorsement Verification
 
 To verify an endorsement a receiver:
 
-1. parses `endorsement_document` and checks that `type` is `MIP_ENDORSEMENT_V2`, or
-   `MIP_ENDORSEMENT_V1` where the receiver accepts it;
-2. checks that the identifiers, fingerprint, `issued_at`, and `expires_at` in the payload
-   equal those in the document;
+1. parses `endorsement_document` and checks that `type` is `MIP_ENDORSEMENT_V2`;
+2. checks that the identifiers, `issued_at`, and `expires_at` in the payload equal those in
+   the document;
 3. looks up the endorser among its `ACTIVE` connections. When the endorser is not an
-   `ACTIVE` connection the receiver holds no key for it and the endorsement is
-   **unverified**; verification stops here, and the endorsement is neither accepted nor
-   rejected;
+   `ACTIVE` connection the endorsement is **unverified**; verification stops here, and the
+   endorsement is neither accepted nor rejected. A receiver keeps a connection's keys in
+   every state, but only an `ACTIVE` connection's key is trusted to anchor a signature;
 4. verifies `endorsement_signature` over `endorsement_document` with that connection's
-   stored public key;
-5. checks that `expires_at` is in the future;
-6. checks that `endorsed_public_key_fingerprint` equals the fingerprint of the endorsed
-   node's public key as the receiver holds it, or, in a Connection Request or a Shared Nodes
-   element, as presented there.
+   stored signing public key;
+5. checks that `expires_at` is in the future.
+
+There is no check of the endorsed node's key. The endorsed identifier is the fingerprint of
+that node's identity key, so an endorsement names one key and no other node can present it.
 
 An endorsement that passes every step is **verified**. One that fails step 1 or 2 is
 **rejected** whoever the endorser is, since those checks need no key and such an endorsement
@@ -2353,11 +2709,10 @@ can never verify later. One that reaches step 4 and fails any step from there on
 
 A revocation is verified by the same steps, applied to `revocation_document` and
 `revocation_signature`, with `MIP_ENDORSEMENT_REVOCATION_V2` as the type in step 1, the
-copied fields compared in step 2, and steps 5 and 6 omitted: a revocation has no
-`expires_at`, and its fingerprint is part of the name of the endorsement it withdraws rather
-than a claim to check. A revocation whose fingerprint matches nothing the receiver holds
-cancels nothing under the ordering rule and is stored against the day that endorsement
-arrives. It has the same three outcomes: verified, unverified when the endorser is not an
+copied fields compared in step 2, and step 5 omitted, since a revocation has no
+`expires_at`. A revocation naming an endorsement the receiver does not hold cancels nothing
+under the ordering rule and is stored against the day that endorsement arrives. It has the
+same three outcomes: verified, unverified when the endorser is not an
 `ACTIVE` connection, and rejected. One exception to step 3: a revocation of an endorsement of
 the receiver itself, arriving at [Endorsement Revoked](#endorsement-revoked), is verified
 with the key the receiver holds for the sender whatever the state of that connection, since
@@ -2367,10 +2722,11 @@ Because step 3 requires an `ACTIVE` connection, an endorser whose connection is 
 stops verifying without any further rule: its endorsements become unverified on the node that
 revoked it, and no longer count for anything there.
 
-A receiver SHOULD also accept the earlier document type `MIP_ENDORSEMENT_V1`, whose
-fingerprint is the MD5 digest of the SubjectPublicKeyInfo written as 16 colon-separated
-hexadecimal pairs, and verify it by the same steps with that fingerprint algorithm in step 6.
-A node MUST issue `MIP_ENDORSEMENT_V2`.
+A node MUST issue `MIP_ENDORSEMENT_V2`, and a receiver accepts no other type. The 1.0
+document type, `MIP_ENDORSEMENT_V1`, named nodes by identifiers this version does not use.
+A node moving from 1.0 is a new node to every peer, since its identifier, its URL, and its
+keys all change: it makes its connections afresh under the new identifier, and endorsements
+are issued at the usual moments, so nothing from 1.0 carries over.
 
 ### Endorsement Storage
 
@@ -2380,10 +2736,12 @@ verified revocation under the ordering rule below. A receiver stores verified en
 and revocations, and stores unverified ones so that they can be verified later, when the
 endorser becomes an `ACTIVE` connection. At that moment each unverified endorsement and
 revocation from that endorser is verified; those that pass become verified and those that
-fail are deleted. A rejected endorsement or revocation MUST NOT be stored.
+fail are deleted, and any `PENDING` request from a node the newly verified endorsements
+name is evaluated for [Late Automatic Approval](#late-automatic-approval). A rejected
+endorsement or revocation MUST NOT be stored.
 
-Endorsements and revocations are keyed by the triple (endorser, endorsed node, fingerprint).
-For each triple the verified document with the latest `issued_at` decides, whether it is an
+Endorsements and revocations are keyed by the pair (endorser, endorsed node). For each pair
+the verified document with the latest `issued_at` decides, whether it is an
 endorsement or a revocation. A revocation issued after the stored endorsement marks it
 revoked. An endorsement issued after the stored revocation reinstates it, since it is a fresh
 decision by a person at the endorser. A document arriving with an older `issued_at` than the
@@ -2396,11 +2754,11 @@ endorsement arriving later with an earlier `issued_at` changes nothing.
 
 Only verified documents take part in that ordering. Storing a newly received document MUST
 NOT let an unverified endorsement replace a verified endorsement or a verified revocation for
-the same triple. Otherwise any connected node could, by sending a bad endorsement in a third
+the same pair. Otherwise any connected node could, by sending a bad endorsement in a third
 party's name, erase a good one or undo a withdrawal.
 
 Only verified endorsements count toward automatic approval, and only verified endorsements
-and revocations are relayed through Shared Nodes, and for each triple only the deciding
+and revocations are relayed through Shared Nodes, and for each pair only the deciding
 document. A revoked endorsement counts for nothing and is not relayed; the revocation is
 relayed in its place.
 
@@ -2520,43 +2878,41 @@ individual searches.
 ## Organization-to-Organization Messages
 
 A messaging leg unrelated to any member request: "I have a question, can you get me an
-answer?" Optionally linked to an outstanding item such as a certificate of good standing
+answer?" Optionally linked to an outstanding item such as a Certificate of Good Standing
 request by its `shared_identifier`, but not dependent on one.
 
-## Requesting Member Profile on a Certificate Request
+## Requesting Member Profile on a Certificate of Good Standing Request
 
 When the requesting organization holds a full member record for the person, it could append a
-`requesting_member_profile` in the Member Profile format to the certificate request, so the
+`requesting_member_profile` in the Member Profile format to the Certificate of Good Standing
+Request, so the
 responding side has more to match against. It would be absent when the person is not yet a
 member on the requesting side.
 
 ## Key Rotation
 
-2.0 fixes a node's key for as long as any other node holds it. A key cannot be changed by an
-Organization Update, and a repeated Connection Request presenting a different key is refused
-with `public_key_mismatch`, so that a repeat cannot swap in a key nobody has verified. The
-cost of that rule falls on any node that rotates its key, and it falls hardest on connections
-that are not `ACTIVE`.
+2.0 fixes a node's signing key for as long as any other node holds it. Neither key can be
+changed by an Organization Update, and a repeated Connection Request presenting a different
+key is refused with `public_key_mismatch`, so that a repeat cannot swap in a key nobody has
+verified. A node that replaces its signing key in 2.0 therefore loses every connection it
+has, `ACTIVE` or not, and a declined or revoked connection cannot even be reopened, since the
+reopening request carries a key the other side does not hold.
 
-Consider a connection that was declined or revoked, after which either node rotates its key.
-The other node still holds the old key against the record. A new Connection Request from the
-rotated node carries the new key, and is answered `422` `public_key_mismatch`; the record is
-never reopened. The rotated node cannot revoke either, since its signature no longer verifies
-against the key on file, and it cannot receive an update, since the other node holds no
-`ACTIVE` connection to send one over. No move in 2.0 repairs this, and the two organizations
-are left to have a person on each side delete or edit a record by hand, which the connection
-rules otherwise never require.
+2.0 lays the ground for rotation without needing it. Because a node's identity is its
+identity key, and the signing key speaks for it only through a signing key attestation, a
+new signing key is not a new identity. 2.1 will define a request by which a node sends a
+new signing key attestation over each connection it holds, in any state: the receiver
+verifies it under the identity key it already holds, the latest `issued_at` wins as it does
+for endorsements, and the receiver replaces the stored signing key. No person need verify
+anything out of band, since the identifier does not change and the identity key vouches for
+the new key. After rotating, the node issues a new node profile document and reissues its
+endorsements to its `ACTIVE` connections, since both were signed with the retired key; a
+renewal of decisions already made, needing no person. What 2.0 settles is the shape that makes this possible, and that a repeated
+request on its own MUST NOT change a stored key.
 
-An `ACTIVE` connection that rotates its key has the same problem one step later: every
-signed request fails, and the only 2.0 remedy is to revoke and start again, which is
-impossible for the reason above.
-
-2.1 needs a way to rotate a key that a person can verify out of band, most likely by reading
-the new key's fingerprint over the telephone the same way a connection is first approved,
-and it needs that way to work against a `DECLINED` or `REVOKED` record as well as an `ACTIVE`
-one. Whether that is a new endpoint, a signed rotation document carried on a Connection
-Request and countersigned by the old key, or something else, is for 2.1 to decide. What 2.0
-settles is only that a repeated request on its own MUST NOT change a stored key.
+Replacing the identity key is not rotation; it is a new node, and the connections and
+endorsements of the old one do not carry over. Whether 2.1 defines a succession, the old
+identity vouching for the new, is open.
 
 ## Linked Members
 

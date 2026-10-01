@@ -36,12 +36,21 @@ when the value differs from its own environment. The header is not part of the s
 document.
 
 **Why.** Vendors routinely run development and test copies of a live database, with the same
-node identifier and key. Without this header an approval, a search, or a certificate could
+node identifier and keys. Without this header an approval, a search, or a Certificate of
+Good Standing could
 cross from a test copy into the live network and be indistinguishable from the real thing.
 The header makes such a request fail at the door.
 
 **What to change.** Send the header on every request; reject requests whose value differs
 from your own environment.
+
+### `X-MIP-TIMESTAMP` time zone (clarification)
+
+**What changed.** The timestamp header is ISO 8601 with a time zone. 1.0 said only "ISO
+8601", which permits a local time with no zone.
+
+**Why.** A receiver comparing the timestamp with its own clock for the timestamp window
+needs to know which clock the sender meant.
 
 ### Best practices with fixed status codes (additive)
 
@@ -82,9 +91,10 @@ as a bad signature and not as whatever check happened to run first.
 
 **What changed.** 1.0 said the header is used "where the receiving organization does not
 know the RSA public key of the originating system ahead of time". 2.0 names the request: it
-is sent on a Connection Request and on no other, a Connection Declined included. A Declined
-is verified with the responder's key, which the requester holds from the Connection Request
-response, as an Approved is.
+is sent on a Connection Request and on no other, a Connection Declined included, and it
+carries the sender's signing public key, the key that verifies the request (see Node
+identity and keys below). A Declined is verified with the responder's signing key, which the
+requester holds from the Connection Request response, as an Approved is.
 
 **Why.** "Does not know ahead of time" left each implementer to decide when that was. Naming
 the one request removes the guesswork. A 1.0 requester that lost the Connection Request
@@ -100,21 +110,58 @@ the stored key; ignore the header where it is not used.
 ### RSA key size (additive)
 
 **What changed.** 1.0's example generated a 2048-bit key and stated no requirement. 2.0
-requires at least 2048 bits, recommends 4096, and caps keys at 8192 bits. A Connection
-Request whose key is outside the bounds is answered `422` `public_key_size_invalid`.
+requires at least 2048 bits, recommends 4096, and caps keys at 8192 bits, for both of a
+node's keys. A Connection Request whose keys are outside the bounds is answered `422`
+`public_key_size_invalid`.
 
 **Why.** A minimum keeps weak keys out of the network. A maximum keeps the signature and
 public key headers, and the keys and endorsements carried in a Shared Nodes batch, within
 common per-header and per-request size limits.
 
-### MIP identifier (clarification)
+### Node identity and keys (breaking, security)
 
-**What changed.** 1.0 prescribed an MD5 of a random UUID and a salt. 2.0 requires 32
-lowercase hexadecimal characters generated so that a collision is negligibly likely, and
-keeps the MD5 recipe as one example of producing such a value.
+**What changed.** A node has two RSA key pairs instead of one. The **identity key** is the
+node's identity: its `mip_identifier` is the fingerprint of the identity public key, the
+SHA-256 of the DER SubjectPublicKeyInfo as 64 lowercase hexadecimal characters, in place of
+1.0's 32-character MD5 of a random UUID and a salt. The identity key signs one thing only,
+the node's **signing key attestation**, a document of type
+`MIP_SIGNING_KEY_ATTESTATION_V2` carrying `{mip_identifier, signing_public_key_fingerprint,
+issued_at}` in the same full payload form as an endorsement. The **signing key** signs every
+request, endorsement, and revocation. The Node Profile carries `identity_public_key`,
+`signing_public_key`, and `signing_key_attestation` in place of `public_key`;
+`X-MIP-PUBLIC-KEY` carries the signing public key. On a Connection Request the receiver
+checks that the identity key hashes to the identifier and that the signing key
+attestation verifies under it and names the presented signing key; otherwise `422`
+`attestation_invalid`, a new catalog code that also covers a node profile document that
+fails (see Node Profile below). A Shared Nodes element is checked the same way and is not
+stored if it fails. Every node's identifier changes. Where a node keeps either private key
+is its own business.
 
-**Why.** The requirement was always uniqueness; the hash recipe was only ever a way to get
-there.
+**Why.** In 1.0 an identifier was a name a node chose, and nothing tied it to a key until a
+person compared fingerprints over the telephone. An impostor could file a Connection Request
+under a real node's identifier with its own key and sit pending, and a genuine endorsement
+of the real node, relayed later through discovery, would then complete the impostor's
+request with no person involved, because the endorsement named the identifier and the
+pending record carried it. Deriving the identifier from a key closes that at the root:
+claiming an identifier is proving possession of its private half, an endorsement names one
+key and no other node can present it, and the endorsement document no longer needs a
+fingerprint of its own. Two keys rather than one so that a later version can replace the
+signing key without changing the identity: a new signing key attestation over each
+connection, verified
+under the identity key every peer already holds, with the identifier, the connections, and
+the endorsements of the node untouched. The identity key is used at setup and at rotation
+and never in between, so a node may keep it apart from the systems that handle requests,
+which is what would protect the identity against a server compromise; the protocol does not
+require that.
+
+**What to change.** Generate an identity key and derive your identifier from it; generate a
+signing key and issue a signing key attestation for it; send both public keys and the
+signing key attestation in your profile; wherever a profile arrives, check the identifier
+against the identity key and the signing key attestation against both; verify requests
+with the peer's signing key; store both keys and the signing key attestation per
+connection. Every 1.0 identifier is retired, and to every peer an upgraded node is a new
+node: every connection is requested and approved afresh, and nothing from 1.0 carries
+over.
 
 ## Connection Protocol
 
@@ -123,8 +170,12 @@ there.
 **What changed.** 1.0's request was flat: `mip_identifier`, `mip_url`, `public_key`,
 `organization_legal_name`, `contact_person`, `contact_phone`, `share_my_organization`,
 `endorsements`. 2.0's request is `{node_profile, share_my_organization, endorsements}`, where
-`node_profile` is the requester's Node Profile and carries two fields 1.0 did not have:
-`gdpr_metadata` (required) and `organization_public_website` (optional).
+`node_profile` is the requester's Node Profile and carries fields 1.0 did not have:
+`gdpr_metadata` (required), `organization_public_website` (optional), the two public keys
+and signing key attestation in place of `public_key` (see Node identity and keys above),
+and the signed node profile document (see Node Profile below). Every presented endorsement
+must name the requester as its endorsed node; otherwise `422` `validation_failed` naming
+`endorsements`.
 
 **Why.** The other legs that describe a node (approved, update) already nested a
 `node_profile`; the request was the odd one out, and every implementer had to build the
@@ -134,7 +185,8 @@ accountable for a peer's data and who processes it. Implementations built agains
 early enough that adding the field now costs little.
 
 **What to change.** Nest the connection request fields under `node_profile` and add
-`gdpr_metadata` and `organization_public_website`; expect the same shape from requesters.
+`gdpr_metadata`, `organization_public_website`, and the key fields; expect the same shape
+from requesters.
 
 ### Connection Request response (additive)
 
@@ -156,8 +208,9 @@ Shared Nodes below), and carrying them here as well duplicated them.
 ### Repeated Connection Requests (clarification)
 
 **What changed.** 1.0 said only that a declined requester may request again. 2.0 makes a
-Connection Request a request and never a query, and says what a receiver does with one for a
-node it already holds a connection for, never creating a second record. On `DECLINED` or
+Connection Request a request and never a query, forbids a node to send one for a connection
+it holds `ACTIVE`, and says what a receiver does with one for a node it already holds a
+connection for, never creating a second record. On `DECLINED` or
 `REVOKED`, from either node, the record becomes `REOPENED`, a new fifth status, and is
 presented to a person, whichever node revoked it and whichever node made the original
 request; a blocked requester is answered the current status and nothing changes. On
@@ -168,15 +221,15 @@ the status, since the receiver's own request is the one waiting on that node. A 
 wants to know what the other side holds sends a Connection Status instead (see below). The
 request that creates or reopens a record refreshes the stored profile, stores the presented
 endorsements, and sets the roles afresh: the sender asked, the receiver was asked, and any
-earlier roles on the record are discarded; only the receiving node's person decides. A retry
-changes nothing. See Connection notifications from the wrong side below. `REOPENED` is
+earlier roles on the record are discarded, the requester's reset being judged by what it
+holds when the response arrives; only the receiving node's person decides. A retry changes
+nothing. See Connection notifications from the wrong side below. `REOPENED` is
 `PENDING` without automatic
 approval: it is never approved on the spot or later by an endorsement, because a person
 declined or revoked it and only a person approves it again, and the same notifications move
 it to `ACTIVE`, `DECLINED`, or `REVOKED`. It is a status rather than a private mark so that
 the rule travels on the wire and the requester can see a person will review. A repeat
-presenting a different public key is
-answered `422` `public_key_mismatch` and changes nothing. A node may block a node it has
+presenting different keys is answered `422` `public_key_mismatch` and changes nothing. A node may block a node it has
 declined or revoked; a repeat from a blocked node changes nothing and is answered with the
 current status, `DECLINED` or `REVOKED`. The block is a local mark, not a status, and is
 never sent; a node that sends its own Connection Request to a node it has blocked should
@@ -191,28 +244,30 @@ one the same way is how a revoked connection comes back now that Connection Rest
 gone; see Connection Revoked below. Blocking is what lets a node refuse a persistent
 requester without a person reviewing the same request again each time; it stays local and
 off the wire so that it adds no state to the protocol and no history to the record.
-Refusing a different key is a security rule: otherwise a repeated request could swap in a
-new key before anyone had verified the old one over the telephone. Key rotation is left for
+Refusing a different key follows from 2.0 defining no replacement of a signing key, and a
+repeated request is not the place to define one. Key rotation is left for
 a later version, and the 2.0 document's "Key Rotation" entry under MIP 2.1 Proposed Ideas
-records why it cannot wait longer than that: a node that rotates its key after a connection
-is declined or revoked has no way in 2.0 to reopen it.
+records how it will work and why it cannot wait longer than that: a node that replaces its
+signing key in 2.0 has no way to reopen a declined or revoked connection.
 
 ### Public key on a Connection Request (breaking, security)
 
 **What changed.** On a Connection Request the key in `X-MIP-PUBLIC-KEY` and the
-`public_key` in `node_profile` must be the same key, compared as parsed keys. A mismatch is
-`422` `public_key_mismatch` and nothing is stored.
+`signing_public_key` in `node_profile` must be the same key, compared as parsed keys. A
+mismatch is `422` `public_key_mismatch` and nothing is stored. The identity key, the
+signing key attestation, and the node profile document are then checked against the
+identifier (see Node identity and keys above and Node Profile below).
 
 **Why.** The signature is verified with the header key, but the key a receiver stores comes
-from the body. If nothing checks that they match, an attacker can sign a request with their
-own key, put a victim's public key in the body, and present the victim's genuine
-endorsements. The endorsements verify against the body key, the connection auto-approves,
-and the receiver goes on to send its approval, its endorsement, and its whole shared-node
-list to the attacker's URL, while the real victim is locked out because a repeated request
-just echoes `ACTIVE`.
+from the body. If nothing checks that they match, an attacker can sign a request with one
+key and have the receiver store another, so that the stored key is not the one that proved
+anything. With the identifier derived from the identity key the signing key attestation ties the
+stored signing key to the identifier as well, but the header check is still what ties it to
+the request that was actually signed.
 
 **What to change.** Compare the two keys on every Connection Request before storing
-anything.
+anything, then check the identity key, the signing key attestation, and the node profile
+document.
 
 ### Connection Approved payload (breaking)
 
@@ -301,8 +356,10 @@ background. Each notification names a source state and a target state: a record 
 source state moves to the target; a record already in the target state is answered `200`
 unchanged; a record in neither is answered `409` `connection_state_invalid`, which now
 carries the receiver's current `status` and which the sender must not act on. `403`
-`connection_not_active` also carries the receiver's current `status`, and the sender must
-record it. A `403` or `409` answering an Approved or Declined changes nothing on the sender.
+`connection_not_active` also carries the receiver's current `status`; the sender records it
+only when it is `REVOKED`, and then as the other node's revocation, and otherwise shows it
+to a person and changes nothing. A `403` or `409` answering any notification changes
+nothing on the sender.
 A node that wants to ask outright sends a Connection Status (see below); the node that asked
 may also retry its own Connection Request. The disagreements the rules can leave behind are a
 lost reply, an undelivered revocation, and a lost Connection Request response, each repaired
@@ -326,15 +383,16 @@ every state change into a background job, need a lock on the connection while a 
 outstanding, and create ordering hazards between notifications sent in quick succession. A
 person re-sending needs none of that, and the same receiver behaviour makes it safe. A
 Revoked in particular is not retried because a revocation sent by mistake that then failed
-would keep trying with no way for the person to stop it. The `409` and the `403` are
-treated differently because a `409` answers an action a person is in the middle of, so the
-person should see the conflict and choose, while a `403` answers a routine request with no
-one mid-action, so the node may simply catch up.
+would keep trying with no way for the person to stop it. A node records from a report only
+what the reporting node could have imposed on it through an explicit endpoint anyway, and
+`REVOKED` is the one status that qualifies, since Connection Revoked is accepted from any
+state; an earlier 2.0 draft had the sender record whatever a `403` carried, which let a
+peer's answer undo a revocation.
 
 **What to change.** Record an Approved or Declined on `200`, not before; record a Revoked at
 once. Answer `200` rather than an error when a notification finds the record already in its
-target state. Put the current `status` on a `409` and on a `403` `connection_not_active`,
-and record the status a `403` reports.
+target state. Put the current `status` on a `409` and on a `403` `connection_not_active`;
+record `REVOKED` from a `403` as the other node's revocation, and nothing else.
 
 ### Connection Declined (clarification)
 
@@ -376,17 +434,23 @@ on alone, which is the right price for an act as serious as revocation.
 `/mip_connections/restored`; a node that wants a revoked connection back sends a Connection
 Request.
 
-### Organization Update request (clarification)
+### Organization Update request (breaking)
 
-**What changed.** The request is `{node_profile}` as in 1.0, now with `gdpr_metadata` inside
-the profile. 2.0 lists what an update may change (`organization_legal_name`,
-`contact_person`, `contact_phone`, `organization_public_website`, `mip_url`,
-`gdpr_metadata`) and states that it never changes `mip_identifier` or `public_key`; a
-receiver ignores those two fields in an update.
+**What changed.** The request is `{node_profile}` as in 1.0, now with `gdpr_metadata` beside
+the profile's fields and the profile carried as a signed node profile document (see Node
+Profile below) with a later `issued_at` than the one the receiver holds. 2.0 lists what an
+update may change (`organization_legal_name`, `contact_person`, `contact_phone`,
+`organization_public_website`, `mip_url`, `gdpr_metadata`) and states that it never changes
+`mip_identifier`, either key, or the signing key attestation; an update whose keys differ
+from those held is `422` `public_key_mismatch`, one whose document fails to verify is `422`
+`attestation_invalid`, and one older than the document held changes nothing. An update is
+the direct delivery of the document that discovery carries to everyone else.
 
-**Why.** A node's identity is its identifier and its key. Letting an update change either
-would let any connected node's compromise be turned into a key swap. Changing a key is left
-for a later version.
+**Why.** A node's identity is its identifier and its keys. Letting an update change any of
+them would let any connected node's compromise be turned into a key swap. Changing a key is
+left for a later version. Signing the profile means a peer takes the update on the updating
+node's word alone, and the same document can travel through third parties without losing
+that.
 
 ### Organization Update response (breaking)
 
@@ -409,11 +473,11 @@ with the connection shape used by the Connection Request and Organization Update
 receiver's `node_profile` with its `gdpr_metadata`. It is exempt from the active-connection
 check and is answered from any state, `DECLINED` and `REVOKED` included; a blocked node is
 told `DECLINED` or `REVOKED` like any other. It changes nothing on the receiver. The sender
-records what it reports under the rule by which it accepts a notification: `REVOKED`,
-`PENDING`, and `REOPENED` from either side; `ACTIVE` and `DECLINED` only when the sender is
-the node that asked, since those are statuses only the other node's person can produce, and
-otherwise the report is shown to a person. A node that has itself approved the connection
-keeps its approval. The response says nothing about which node asked.
+records one thing from the response, a `status` of `REVOKED`, as the other node's
+revocation; every other status is shown to a person and changes nothing, under the same
+rule as a `403` (see Notification delivery above). The receiver's profile,
+`daily_rate_limit`, and `share_my_organization` in the response are taken as from an
+Organization Update response. The response says nothing about which node asked.
 
 **Why.** Under 1.0 and the earlier 2.0 text the only way to learn what the other side held
 was to send another Connection Request, which also reopened records and, read with the role
@@ -423,7 +487,7 @@ asked could otherwise tell the other "you asked" and have its own approval accep
 come only from a node's own request being answered.
 
 **What to change.** Serve `/mip_connections/status`; use it, rather than a Connection
-Request, to learn the other node's view.
+Request, to learn the other node's view; record `REVOKED` from it and nothing else.
 
 ### Endorsement issuance (breaking, security)
 
@@ -486,20 +550,28 @@ element is a Node Profile without `gdpr_metadata` plus that node's `endorsements
 `revocations`, both required and either possibly empty. A batch holds at most 20 nodes; each
 element carries at most five documents, endorsements and revocations together, all verified
 by the sender, the sender's own first and the rest newest first, and for each (endorser,
-endorsed node, fingerprint) only the deciding document, the verified endorsement or
-revocation with the latest `issued_at`. A revocation is thus relayed in place of the
-endorsement it cancels, which is not relayed. The receiver acknowledges with
-`{acknowledged: true}`. It is used after an approval (the approver's known nodes to the new
-connection; the new connection to the approver's other sharing connections), again whenever a
-node issues or renews an endorsement of a node it may share (that node to the endorser's other
-sharing connections, as a batch of one), and in answer to a share request. A verified
+endorsed node) only the deciding document, the verified endorsement or revocation with the
+latest `issued_at`. A revocation is thus relayed in place of the endorsement it cancels,
+which is not relayed. The receiver verifies each element's node profile document, signing
+key attestation, and identity key against its identifier, stores nothing that fails, takes a
+verified profile when it is newer than the one held for that identifier, as a known node or
+a connection in any state, since the node itself signed it, and never lets an element
+change the keys of a node it holds. It acknowledges with `{acknowledged: true}`.
+It is used after an approval (the approver's known nodes to the new connection; the new
+connection to the approver's other sharing connections, carrying the endorsements the
+approver holds and has verified for it, its own first when it has one), again whenever a
+node issues or renews an endorsement of a node it may share (that node to the endorser's
+other sharing connections, as a batch of one), and in answer to a share request. A verified
 endorsement arriving in a batch may complete a pending request from the endorsed node (see
 Endorsements endpoint response below). Only `ACTIVE` connections that set
 `share_my_organization` may be shared.
 
 **Why.** Discovery needed one mechanism with a size bound and endorsements attached, so that
 a node learning of another can also learn who vouches for it, and who has withdrawn a
-vouching. Twenty nodes with five documents each and 8192-bit keys fit within a 256 KiB
+vouching. Nothing in an element is taken on the sender's word: the keys are checked against
+the identifier and the profile against the node's own signature, so a relay can neither
+alter a profile nor substitute a URL. Twenty nodes with two 8192-bit keys, a signing key
+attestation, a signed node profile document, and five documents each fit within a 512 KiB
 request; a revocation is smaller than the endorsement it replaces, so the bound holds
 whatever the mix. Relaying only verified documents means the receiver is never handed one
 the sender itself could not check.
@@ -508,35 +580,43 @@ the sender itself could not check.
 
 ### Endorsement document version and fingerprint (breaking)
 
-**What changed.** The document type is `MIP_ENDORSEMENT_V2`. The fingerprint in the document
-and in the payload is the SHA-256 digest of the key's DER-encoded SubjectPublicKeyInfo as 64
-lowercase hexadecimal characters. A separate display form, the first 16 bytes as
-colon-separated pairs, is what people read to each other over the telephone. `expires_at` is
-required. Nodes issue V2; receivers are asked to keep accepting `MIP_ENDORSEMENT_V1`, whose
-fingerprint was the MD5 digest as 16 colon-separated pairs.
+**What changed.** The document type is `MIP_ENDORSEMENT_V2`, and the document is `{type,
+endorser_mip_identifier, endorsed_mip_identifier, issued_at, expires_at}`. 1.0's
+`endorsed_public_key_fingerprint`, an MD5 of the endorsed key as colon-separated pairs, is
+gone from the document and the payload: the endorsed identifier is now itself the SHA-256
+fingerprint of the endorsed node's identity key (see Node identity and keys above), so the
+endorsement is bound to a key by naming the node. A display form of a fingerprint, the first
+16 bytes as colon-separated pairs, is what people read to each other over the telephone, and
+it is the identifier they read. `expires_at` is required. `MIP_ENDORSEMENT_V1` is not
+accepted: it named nodes by identifiers 2.0 does not use, and a node moving from 1.0 is a
+new node to every peer, with no connection and no endorsement carrying over.
 
-**Why.** MD5 is deprecated and will be flagged by anyone reviewing the protocol, even though
-riding a victim's endorsement would need a second preimage, which MD5 still resists. The
-constraint on any replacement was that it stay readable over the telephone, and a full
-SHA-256 is too long for that. Separating the machine value from the display form gives
-machines the full digest and people a value the same length as before with 128 bits of
-strength. Accepting V1 lets nodes built against 1.0 keep working while they move.
+**Why.** The fingerprint existed to bind an endorsement to one key. Once the identifier is
+that key's fingerprint the binding is in the name and the field is redundant, and the
+verification step that compared it is gone with it. MD5 goes with it, which would in any
+case have been flagged by anyone reviewing the protocol. The constraint on what people read
+over the telephone was that it stay short, and the display form keeps it the length it was
+with 128 bits of strength. V1 cannot survive the identifier change, and since an upgraded
+node's identifier, URL, and keys all change, its peers have no connection to it until they
+connect again; endorsements follow at the usual moments.
 
-**What to change.** Issue `MIP_ENDORSEMENT_V2`; keep accepting V1; show the display form
-wherever a fingerprint is shown to a person.
+**What to change.** Issue `MIP_ENDORSEMENT_V2` without a fingerprint; reject V1; make your
+connections afresh after upgrading; show the display form of an identifier wherever it is
+shown to a person.
 
 ### Endorsement verification and storage (breaking, security)
 
 **What changed.** 1.0 verified an endorsement if the endorser was "a known entity (active
 connection or shared node)" and stored it. 2.0 requires the endorser to be an `ACTIVE`
-connection, since only then does the receiver hold its key. A received endorsement has three
+connection, since only an `ACTIVE` connection's key is trusted to anchor a signature. A received endorsement has three
 outcomes: **verified** (endorser is an `ACTIVE` connection and every check passes),
 **unverified** (endorser is not an `ACTIVE` connection; stored so it can be verified when
 the endorser connects, and checked then), or **rejected** (a check fails: steps 1 and 2 with
 or without the key, later steps with it; not stored). A stored endorsement is in one of three states, verified, unverified,
 or revoked, the third being the result of an Endorsement Revoked (see below). Endorsements
-and revocations are keyed by (endorser, endorsed node, fingerprint), and an unverified
-document never replaces a verified endorsement or a verified revocation for the same key. At
+and revocations are keyed by (endorser, endorsed node), and an unverified document never
+replaces a verified endorsement or a verified revocation for the same key. There is no check
+of the endorsed node's key: the endorsed identifier is that key's fingerprint. At
 `/endorsements` the sender must be the endorser (`400` `endorsement_sender_mismatch`) and a
 failed check is `400` `endorsement_invalid`; a third party's endorsement is accepted only
 inside a Connection Request or a Shared Nodes batch. Only verified endorsements count
@@ -560,21 +640,23 @@ The endorsement is stored, or left as it was under the ordering rule in Endorsem
 and the answer is `200` either way; re-sending an identical endorsement changes nothing. The
 endpoint carries endorsements of the receiver only; an endorsement of any other node arriving
 there is `400` `endorsement_invalid`. Late automatic approval, which 1.0 placed at this
-endpoint, moves to Shared Nodes: a verified endorsement of a node arriving in a batch may
-complete that node's pending request, in which case the approver sends Connection Approved
-with `authentication_type` `ENDORSEMENT` and no `endorsement`; a `REOPENED` record is not
+endpoint, is stated under Processing Shared Nodes and fires whenever a pending request's
+verified endorsements come to satisfy the receiver's policy, whether the endorsement was
+newly verified on arrival in a batch or held unverified and verified when its endorser
+became an `ACTIVE` connection; the approver then sends Connection Approved with
+`authentication_type` `ENDORSEMENT` and no `endorsement`. A `REOPENED` record is not
 eligible.
 
-**Why.** An endorsement is named by its endorser, endorsed node, fingerprint, and
-`issued_at`, all inside the signed document, so a receiver-minted identifier was a second
-name for a thing that already had one, and the sender never referred to it again. The
-member protocol made the same move in 2.0 when it had the requester generate
-`shared_identifier`. Renewals and retries re-send endorsements; making that idempotent
-avoids duplicates. 1.0 stated the late-approval path at this endpoint without its payload,
-but an endorsement that completes a third node's pending request is an endorsement of that
-third node, which this endpoint never carries; it arrives in a Shared Nodes batch, with the
-endorsed node's key beside it so the fingerprint check can run. 2.0 places the path there and
-gives the payload.
+**Why.** An endorsement is named by its endorser, endorsed node, and `issued_at`, all inside
+the signed document, so a receiver-minted identifier was a second name for a thing that
+already had one, and the sender never referred to it again. The member protocol makes the
+same move for the Certificate of Good Standing Request, whose `shared_identifier` 1.0 had
+the responder mint. Renewals and retries re-send endorsements; making that idempotent avoids
+duplicates. 1.0 stated the late-approval path at this endpoint without its payload, but an
+endorsement that completes a third node's pending request is an endorsement of that third
+node, which this endpoint never carries; it arrives in a Shared Nodes batch or was
+presented in the Connection Request itself. The web of trust does not care when an
+endorsement arrived, only whether it verifies.
 
 **What to change.** Stop reading `data.endorsement_id`; expect `data.acknowledged`.
 
@@ -593,9 +675,8 @@ check so that the endorsed node can be told after its connection has ended; a re
 concerning any other node is refused `403` `connection_not_active` from a sender that is not
 `ACTIVE`. The endorsed node stops presenting the endorsement. It is relayed onward in Shared
 Nodes in place of the endorsement it cancels. A revocation is verified by the endorsement
-steps without the expiry and fingerprint checks, the fingerprint being part of the name of
-the endorsement withdrawn rather than a claim to check, and has the same three outcomes. For each
-(endorser, endorsed node, fingerprint) the verified document with the latest `issued_at`
+steps without the expiry check, and has the same three outcomes. For each (endorser,
+endorsed node) the verified document with the latest `issued_at`
 decides: a later revocation marks the endorsement revoked, a later endorsement reinstates
 it, an older copy of either changes nothing, and the revocation wins a tie. A revoked
 endorsement counts for nothing and is not relayed. A revocation is not retroactive: a
@@ -621,39 +702,45 @@ answered; standing on the connection's state to withhold it served nothing.
 
 **What to change.** Serve `/endorsement_revoked`, accepting a revocation of an endorsement of
 yourself from any state and one about a third party from `ACTIVE` connections only; store and
-order revocations with endorsements by the triple and `issued_at`; send and accept
+order revocations with endorsements by the pair and `issued_at`; send and accept
 `revocations` in every Shared Nodes element, share the five-document cap between the two
-arrays, and relay only the deciding document per triple; stop counting, relaying, and
+arrays, and relay only the deciding document per pair; stop counting, relaying, and
 presenting a revoked endorsement.
 
 ## Member Protocol
 
 ### Member Search Request (breaking)
 
-**What changed.** `documents` is removed. `shared_identifier` is required and generated by
-the requester. A request must contain `member_number`, or both `first_name` and
-`last_name`, and may contain all three; `birthdate` is optional and recommended with a name;
-a request meeting neither minimum is `422` `validation_failed`. Unfilled fields are omitted,
-not sent as `null`. `notes` stays. How the responder matches is its own business; matching on
-either the number or the name when both are sent is given as a best practice.
+**What changed.** `documents` is removed. `shared_identifier`, which 1.0 carried without
+saying whether it was required, is required, generated by the requester as before. A request
+must contain `member_number`, or both `first_name` and `last_name`, and may contain all
+three; `birthdate` is optional and recommended with a name; a request meeting neither
+minimum is `422` `validation_failed` naming `member_number`. A request repeating an
+identifier the responder already holds is answered `200` `PENDING` and changes nothing.
+Unfilled fields are omitted, not sent as `null`. `notes` stays. How the responder matches is
+its own business; matching on either the number or the name when both are sent is given as
+a best practice.
 
 **Why.** A member search is a lightweight lookup. Supporting documents belong with the
-exchange that actually moves a person between organizations, the certificate, and no
+exchange that actually moves a person between organizations, the Certificate of Good
+Standing, and no
 implementation had used them on a search. The minimum exists because a search with no
 criteria would otherwise match every member; the requester owning
 `shared_identifier` means the requester can correlate the reply without waiting for the
 response to tell it the identifier.
 
 **What to change.** Stop sending `documents`; always send a requester-generated
-`shared_identifier`; enforce the minimum on both sides.
+`shared_identifier`; enforce the minimum on both sides; answer a repeated identifier
+idempotently.
 
 ### Member Search Reply (clarification)
 
-**What changed.** The reply body and the `matches` element are unchanged. 2.0 shows the
-declined form (`data.reason` in place of `data.matches`), fixes the acknowledgement as
-`{acknowledged: true, shared_identifier}` where 1.0 said "standard MIP response", and labels
-the two halves "Reply body" and "Acknowledgement" instead of "Request Payload" and
-"Response Payload".
+**What changed.** The reply body and the `matches` element are unchanged in their fields.
+2.0 says which fields of a match are required, `first_name` and `last_name`, and that the
+rest are optional and omitted when not held; shows the declined form (`data.reason` in place
+of `data.matches`); fixes the acknowledgement as `{acknowledged: true, shared_identifier}`
+where 1.0 said "standard MIP response"; and labels the two halves "Reply body" and
+"Acknowledgement" instead of "Request Payload" and "Response Payload".
 
 **Why.** The acknowledgement shape was unspecified, and the 1.0 labels made the reply look
 like a request the requester was making.
@@ -661,11 +748,15 @@ like a request the requester was making.
 ### Certificate of Good Standing Request (breaking)
 
 **What changed.** 1.0's request was `{requesting_member: {member_number, first_name,
-last_name, birthdate}, requested_member_number, notes}`. 2.0's carries the same fields as a
-member search, `member_number`, `first_name`, `last_name`, `birthdate`, `shared_identifier`,
-plus `notes`, with the same minimum and the same omission rule.
+last_name, birthdate}, requested_member_number, notes}`, and the responder minted the
+`shared_identifier` in its response. 2.0's carries the same fields as a member search,
+`member_number`, `first_name`, `last_name`, `birthdate`, `shared_identifier`, plus `notes`,
+with the same minimum, the same `422` naming `member_number`, the same omission rule, and
+the same idempotent answer to a repeated identifier; the requester generates the
+identifier.
 
-**Why.** The person a certificate is requested for often has no record yet in the
+**Why.** The person a Certificate of Good Standing is requested for often has no record yet
+in the
 requesting organization, so there was frequently no `requesting_member` to describe. The
 fields now describe the person as the responding organization knows them. Sending the
 requester's own member profile when one exists is proposed for 2.1.
@@ -677,23 +768,27 @@ requester's own member profile when one exists is proposed for 2.1.
 
 **What changed.** 1.0's reply was flat, without the `meta`/`data` envelope. 2.0's reply is
 `{meta, data: {shared_identifier, status, certificate}}` for an approval and `{meta, data:
-{shared_identifier, status, reason}}` for a decline. Everything that is the certificate
-itself sits inside `data.certificate`, which gains its own `shared_identifier`, a UUID
-minted by the issuer. `data.status` is the outcome of the request; `certificate.good_standing`
-is the member's standing, and an issued certificate may say `false`.
+{shared_identifier, status, reason}}` for a decline. Everything that is the Certificate of
+Good Standing itself sits inside `data.certificate`, which gains its own
+`shared_identifier`, a UUID minted by the issuer. `data.status` is the outcome of the
+request; `certificate.good_standing` is the member's standing, and an issued Certificate of
+Good Standing may say `false`.
 
-**Why.** Every other reply in the protocol uses the envelope; the certificate reply was the
-one exception. Separating the request's outcome from the member's standing removes an
+**Why.** Every other reply in the protocol uses the envelope; the Certificate of Good
+Standing reply was the one exception. Separating the request's outcome from the member's standing removes an
 ambiguity in 1.0, where a member not in good standing was shown as a declined request. The
-certificate's own identifier lets it be cited later, for instance when the member affiliates
+Certificate of Good Standing's own identifier lets it be cited later, for instance when the
+member affiliates
 or to ask whether it still stands.
 
-**What to change.** Wrap the reply in the envelope; put the certificate fields under
+**What to change.** Wrap the reply in the envelope; put the Certificate of Good Standing
+fields under
 `data.certificate`; mint and include `certificate.shared_identifier`.
 
-### Certificate validity (clarification)
+### Certificate of Good Standing validity (clarification)
 
-**What changed.** `valid_until` is required. How long a certificate is valid is the issuing
+**What changed.** `valid_until` is required. How long a Certificate of Good Standing is valid
+is the issuing
 organization's policy.
 
 **Why.** 1.0 carried the field without saying whether it was required or who set the
@@ -703,18 +798,38 @@ period.
 
 ### Node Profile (breaking)
 
-**What changed.** `share_my_organization` is removed from the profile; it is a flag on the
-Connection Request and Connection Approved payloads. `gdpr_metadata` is added, present when a
-node describes itself and absent when its profile is relayed. `organization_public_website`
-is optional; every other field is required. The same shape is used everywhere a node is
+**What changed.** The profile is a signed document. A node serializes its facts, the
+identifier, URL, legal name, contact person and phone, website, both public keys, and the
+signing key attestation, as a document of type `MIP_NODE_PROFILE_V2` with an `issued_at`,
+signs it with its signing key, and carries it as `node_profile_document` with
+`node_profile_signature`, every field copied out beside them. A receiver verifies the chain,
+identity key to identifier, identity key to signing key, signing key to document, on every
+leg a profile arrives, responses included, and holds for each identifier the verified
+document with the latest `issued_at`; an older one changes nothing and a failed one is
+`422` `attestation_invalid`, or not stored from a Shared Nodes element, or a failed request
+on a response. `share_my_organization` is removed from the profile; it is a flag on the
+Connection Request and Connection Approved payloads. `public_key` is replaced by
+`identity_public_key`, `signing_public_key`, and `signing_key_attestation` (see Node
+identity and keys above). `gdpr_metadata` is added beside the document, present when a node
+describes itself and absent when its profile is relayed. `organization_public_website` is
+optional; every other field is required. The same shape is used everywhere a node is
 described, and a profile never contains other nodes.
 
-**Why.** Whether a node may be shared is a term of a particular connection, not a fact about
-the node, and carrying it in the profile meant it appeared where it had no meaning (a relayed
-profile, an update). One shape everywhere means one builder and one parser.
+**Why.** In 1.0 and the earlier 2.0 text a relayed profile was the relayer's word, so a
+hostile or compromised connection could relay a real node's genuine keys with a URL of its
+own and redirect the receiver's member searches, with the names and birthdates in them, to
+a server it controlled. Signing the profile means no fact about a node is ever taken from a
+third party: a relay can carry a profile but cannot alter, substitute, or roll back any of
+it, and a newer profile signed by the node is good from whichever direction it arrives.
+Whether a node may be shared is a term of a particular connection, not a fact about the
+node, and carrying it in the profile meant it appeared where it had no meaning. One shape
+everywhere means one builder and one parser.
 
-**What to change.** Send `share_my_organization` beside `node_profile`, not inside it; add
-`gdpr_metadata` when describing yourself.
+**What to change.** Issue and sign a node profile document, and reissue it whenever a fact
+changes; send it with every profile; verify every profile you receive before storing it;
+send `share_my_organization` beside `node_profile`, not inside it; send the two keys and
+the signing key attestation in place of `public_key`; add `gdpr_metadata` when describing
+yourself.
 
 ### GDPR Metadata (additive, and a rule)
 
@@ -731,18 +846,24 @@ there is no basis to disclose to organizations the declarant has no relationship
 Nothing is lost: a node needs a peer's processing chain only once it is about to exchange
 member data with that peer, and every direct leg carries the declaration.
 
-### Certificate (additive)
+### Certificate of Good Standing (additive)
 
-**What changed.** The certificate is now a common data format of its own:
+**What changed.** The Certificate of Good Standing is now a common data format of its own:
 `{shared_identifier, good_standing, issued_at, valid_until, issuing_organization,
 member_profile}`.
 
 **Why.** It has an identifier and a fixed field list, and it is referred to from the reply
 rather than spread across it.
 
-### Member Profile (no change)
+### Member Profile (clarification)
 
-The Member Profile is carried from 1.0 unchanged.
+**What changed.** The fields are carried from 1.0 unchanged. 2.0 says which are required,
+`first_name`, `last_name`, and `group_status`, and that every other field is optional and
+omitted when the issuer does not hold it; a receiver must accept a profile carrying only the
+required fields.
+
+**Why.** Organizations hold very different amounts of information about their members, and
+1.0 left a receiver to guess whether a missing middle name or telephone number was a fault.
 
 ## Moved to 2.1
 
@@ -765,4 +886,4 @@ endpoint until 2.1 defines one.
 1.0's list of "MIP 2.0 Potential Functions" (member linking; notification of linked member
 status and contact changes; display of linked status in member profiles) is carried, with
 its wording, into the 2.1 section beside the member scan, organization-to-organization
-messages, and the requesting member profile on a certificate request.
+messages, and the requesting member profile on a Certificate of Good Standing Request.
